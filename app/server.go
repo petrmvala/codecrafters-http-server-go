@@ -19,7 +19,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var b []byte
+	b := make([]byte, 1024)
 	_, err = conn.Read(b)
 	if err != nil {
 		fmt.Println("Error reading connection: ", err.Error())
