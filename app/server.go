@@ -147,8 +147,6 @@ func composeResponse(response *httpResponse) string {
 }
 
 func handleEchoResponse(req *httpRequest) *httpResponse {
-	rnd, _ := strings.CutPrefix(req.startLine.requestTarget, "/echo/")
-
 	return &httpResponse{
 		statusLine: statusLine{
 			httpVersion:    httpVersion(httpVersion_11),
@@ -162,10 +160,10 @@ func handleEchoResponse(req *httpRequest) *httpResponse {
 			},
 			{
 				name:  httpHeaderKey(httpHeaderContentLength),
-				value: strconv.Itoa(len(rnd)),
+				value: strconv.Itoa(len(req.startLine.requestTarget[6:])),
 			},
 		},
-		body: rnd,
+		body: req.startLine.requestTarget[6:],
 	}
 }
 
