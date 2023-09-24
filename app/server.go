@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -16,16 +17,20 @@ const (
 
 	httpVersion_11 = "HTTP/1.1"
 
-	httpStatusOK       = "200"
-	httpStatusNotFound = "404"
+	httpStatusOK                  = "200"
+	httpStatusNotFound            = "404"
+	httpStatusInternalServerError = "500"
 
-	httpStatusTextOK       = "OK"
-	httpStatusTextNotFound = "Not Found"
+	httpStatusTextOK                  = "OK"
+	httpStatusTextNotFound            = "Not Found"
+	httpStatusTextInternalServerError = "Internal Server Error"
 
 	httpHeaderContentType   = "Content-Type"
 	httpHeaderContentLength = "Content-Length"
 	httpHeaderUserAgent     = "User-Agent"
 )
+
+var Config config
 
 type httpMethod string
 
@@ -228,6 +233,37 @@ func handleUserAgent(req *httpRequest) *httpResponse {
 	}
 }
 
+func handleFileRequest(req *httpRequest) *httpResponse {
+
+	response := &httpResponse{
+		statusLine: statusLine{
+			httpVersion:    httpVersion(httpVersion_11),
+			httpStatusCode: httpStatusCode(httpStatusNotFound),
+			httpStatusText: httpStatusText(httpStatusTextNotFound),
+		},
+		headers: nil,
+		body:    "",
+	}
+
+	// Filename at path /files/<filename>
+	filename := req.startLine.requestTarget[7:]
+
+	data, err := os.ReadFile(Config.serveDir + "/" + filename)
+	if err != nil {
+		return response
+	}
+
+	response.statusLine.httpStatusCode = httpStatusCode(httpStatusOK)
+	response.statusLine.httpStatusText = httpStatusText(httpStatusTextOK)
+	response.headers = []httpHeader{
+		{name: httpHeaderKey(httpHeaderContentType), value: "application/octet-stream"},
+		{name: httpHeaderKey(httpHeaderContentLength), value: strconv.Itoa(len(string(data)))},
+	}
+	response.body = string(data)
+
+	return response
+}
+
 func handleRootResponse() *httpResponse {
 	return &httpResponse{
 		statusLine: statusLine{
@@ -279,6 +315,8 @@ func connHandler(conn net.Conn) {
 		res = handleEchoResponse(req)
 	case req.startLine.requestTarget == "/user-agent":
 		res = handleUserAgent(req)
+	case strings.HasPrefix(req.startLine.requestTarget, "/files/"):
+		res = handleFileRequest(req)
 	default:
 		res = handleDefaultResponse()
 	}
@@ -293,7 +331,19 @@ func connHandler(conn net.Conn) {
 
 }
 
+type config struct {
+	serveDir string
+}
+
 func main() {
+
+	serveDir := flag.String("directory", ".", "Directory to serve files from")
+	flag.Parse()
+
+	Config.serveDir = *serveDir
+
+	fmt.Println("Server configured to serve from directory", Config.serveDir)
+
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
