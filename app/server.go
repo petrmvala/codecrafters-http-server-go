@@ -248,6 +248,7 @@ func handleFileRequest(req *httpRequest) *httpResponse {
 	// Filename at path /files/<filename>
 	filename := req.startLine.requestTarget[7:]
 
+	fmt.Println("Reading file: ", Config.serveDir+"/"+filename)
 	data, err := os.ReadFile(Config.serveDir + "/" + filename)
 	if err != nil {
 		return response
@@ -337,7 +338,7 @@ type config struct {
 
 func main() {
 
-	serveDir := flag.String("directory", ".", "Directory to serve files from")
+	serveDir := flag.String("directory", "/tmp/data/codecrafters.io/http-server-tester/", "Directory to serve files from")
 	flag.Parse()
 
 	Config.serveDir = *serveDir
