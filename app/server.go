@@ -24,6 +24,7 @@ const (
 
 	httpHeaderContentType   = "Content-Type"
 	httpHeaderContentLength = "Content-Length"
+	httpHeaderUserAgent     = "User-Agent"
 )
 
 type httpMethod string
@@ -65,6 +66,19 @@ type httpHeader struct {
 	value string
 }
 
+func parseHeader(header string) (*httpHeader, error) {
+	key, value, found := strings.Cut(header, ": ")
+	if !found {
+		return nil, errors.New("invalid header")
+	}
+	switch key {
+	case httpHeaderContentLength, httpHeaderContentType, httpHeaderUserAgent:
+		return &httpHeader{name: httpHeaderKey(key), value: value}, nil
+	default:
+		return nil, errors.New("invalid header")
+	}
+}
+
 func validateHttpMethod(method string) (httpMethod, error) {
 	switch method {
 	case httpMethodGet, httpMethodPost:
@@ -89,9 +103,29 @@ func validateHttpVersion(version string) (httpVersion, error) {
 }
 
 func parseRequest(r string) (*httpRequest, error) {
-	lines := strings.Split(r, "\r\n")
 
-	firstLine := strings.Split(lines[0], " ")
+	// If the string cannot be split, body is set to ""
+	header, body, _ := strings.Cut(r, "\r\n\r\n")
+
+	headlines := strings.Split(header, "\r\n")
+
+	// parse headers
+	var headers []httpHeader
+	if len(headlines) > 1 {
+		for _, h := range headlines[1:] {
+			header, err := parseHeader(h)
+			if err != nil {
+				// ignore invalid headers, maybe we should act differently
+				continue
+			}
+			headers = append(headers, *header)
+		}
+	}
+
+	firstLine := strings.Split(headlines[0], " ")
+	if len(firstLine) != 3 {
+		return nil, errors.New("malformed request")
+	}
 	method, target, protocol := firstLine[0], firstLine[1], firstLine[2]
 
 	m, err := validateHttpMethod(method)
@@ -115,11 +149,9 @@ func parseRequest(r string) (*httpRequest, error) {
 			requestTarget: target,
 			httpVersion:   v,
 		},
-		headers: nil,
-		body:    "",
+		headers: headers,
+		body:    body,
 	}, nil
-
-	// omitting other lines for now
 }
 
 func composeRequest(request *httpRequest) string {
@@ -164,6 +196,35 @@ func handleEchoResponse(req *httpRequest) *httpResponse {
 			},
 		},
 		body: req.startLine.requestTarget[6:],
+	}
+}
+
+func handleUserAgent(req *httpRequest) *httpResponse {
+	var ua string
+	for _, v := range req.headers {
+		if v.name == httpHeaderUserAgent {
+			ua = v.value
+			break
+		}
+	}
+
+	return &httpResponse{
+		statusLine: statusLine{
+			httpVersion:    httpVersion(httpVersion_11),
+			httpStatusCode: httpStatusCode(httpStatusOK),
+			httpStatusText: httpStatusText(httpStatusTextOK),
+		},
+		headers: []httpHeader{
+			{
+				name:  httpHeaderKey(httpHeaderContentType),
+				value: "text/plain",
+			},
+			{
+				name:  httpHeaderKey(httpHeaderContentLength),
+				value: strconv.Itoa(len(ua)),
+			},
+		},
+		body: ua,
 	}
 }
 
@@ -216,6 +277,8 @@ func connHandler(conn net.Conn) {
 		res = handleRootResponse()
 	case strings.HasPrefix(req.startLine.requestTarget, "/echo/"):
 		res = handleEchoResponse(req)
+	case req.startLine.requestTarget == "/user-agent":
+		res = handleUserAgent(req)
 	default:
 		res = handleDefaultResponse()
 	}
