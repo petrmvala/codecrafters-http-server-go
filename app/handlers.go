@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -74,17 +76,44 @@ func handleFilePost(req *httpRequest) *httpResponse {
 	res := &httpResponse{}
 
 	filename := req.Path()[7:]
+	path := Config.serveDir + "/" + filename
 
-	//TODO: check if file already exists
-
-	_, err := os.Stat(Config.serveDir + "/" + filename)
+	//TODO: do something smarter
+	_, err := os.Stat(path)
 	if err == nil {
 		log.Fatalln("file already exists, exiting for safety")
 	}
 
+	fmt.Println("saving this to a file", req.body)
+	fmt.Println(req.Header(httpHeaderContentLength))
+
 	err = os.WriteFile(Config.serveDir+"/"+filename, []byte(req.body), 0666)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		log.Fatalln("Error creating file:", err)
+	}
+	defer file.Close()
+
+	// Write only Content-Length of data
+	headerVal, err := req.Header(httpHeaderContentLength)
+	if err != nil {
+		log.Fatalln("content-length not received")
+	}
+
+	length, err := strconv.Atoi(headerVal)
+	if err != nil {
+		log.Fatalln("wtf just happened")
+	}
+
+	content := req.body[:length]
+
+	_, err = io.WriteString(file, content)
+	if err != nil {
+		log.Println("Error writing to file:", err)
 	}
 
 	res.setStatus(HttpStatusCreated)
