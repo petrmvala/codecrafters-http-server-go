@@ -1,362 +1,141 @@
 package main
 
 import (
-	"errors"
-	"flag"
-	"fmt"
+	"log"
 	"net"
-	"os"
-	"regexp"
-	"strconv"
 	"strings"
 )
 
-const (
-	httpMethodGet  = "GET"
-	httpMethodPost = "POST"
+type pathHandler func(*httpRequest) *httpResponse
 
-	httpVersion_11 = "HTTP/1.1"
-
-	httpStatusOK                  = "200"
-	httpStatusNotFound            = "404"
-	httpStatusInternalServerError = "500"
-
-	httpStatusTextOK                  = "OK"
-	httpStatusTextNotFound            = "Not Found"
-	httpStatusTextInternalServerError = "Internal Server Error"
-
-	httpHeaderContentType   = "Content-Type"
-	httpHeaderContentLength = "Content-Length"
-	httpHeaderUserAgent     = "User-Agent"
-)
-
-var Config config
-
-type httpMethod string
-
-type httpVersion string
-
-type httpStatusCode string
-
-type httpStatusText string
-
-type httpHeaderKey string
-
-type httpRequest struct {
-	startLine startLine
-	headers   []httpHeader
-	body      string
+// The distributor maps paths and methods to their handlers
+//
+//	{
+//	  "/":     {"GET": getRoothandler}
+//	  "/path": {
+//			"GET": getPathhandler,
+//			"PUT": putPathhandler,
+//	  }
+//	  "/foo/*": {"GET": getFooHandler}
+//	}
+type distributor struct {
+	paths map[string]map[string]pathHandler
 }
 
-type httpResponse struct {
-	statusLine statusLine
-	headers    []httpHeader
-	body       string
+func newDistributor() *distributor {
+	var d distributor
+	d.paths = make(map[string]map[string]pathHandler)
+
+	return &d
 }
 
-type startLine struct {
-	httpMethod    httpMethod
-	requestTarget string
-	httpVersion   httpVersion
-}
-
-type statusLine struct {
-	httpVersion    httpVersion
-	httpStatusCode httpStatusCode
-	httpStatusText httpStatusText
-}
-
-type httpHeader struct {
-	name  httpHeaderKey
-	value string
-}
-
-func parseHeader(header string) (*httpHeader, error) {
-	key, value, found := strings.Cut(header, ": ")
-	if !found {
-		return nil, errors.New("invalid header")
-	}
-	switch key {
-	case httpHeaderContentLength, httpHeaderContentType, httpHeaderUserAgent:
-		return &httpHeader{name: httpHeaderKey(key), value: value}, nil
-	default:
-		return nil, errors.New("invalid header")
-	}
-}
-
-func validateHttpMethod(method string) (httpMethod, error) {
-	switch method {
-	case httpMethodGet, httpMethodPost:
-		return httpMethod(method), nil
-	default:
-		return "", errors.New("invalid HTTP method")
-	}
-}
-
-func validateHttpTarget(target string) bool {
-	if m, _ := regexp.MatchString(`/(echo/\w+)?`, target); m {
-		return true
-	}
-	return false
-}
-
-func validateHttpVersion(version string) (httpVersion, error) {
-	if version == httpVersion_11 {
-		return httpVersion(httpVersion_11), nil
-	}
-	return "", errors.New("invalid HTTP protocol version")
-}
-
-func parseRequest(r string) (*httpRequest, error) {
-
-	// If the string cannot be split, body is set to ""
-	header, body, _ := strings.Cut(r, "\r\n\r\n")
-
-	headlines := strings.Split(header, "\r\n")
-
-	// parse headers
-	var headers []httpHeader
-	if len(headlines) > 1 {
-		for _, h := range headlines[1:] {
-			header, err := parseHeader(h)
-			if err != nil {
-				// ignore invalid headers, maybe we should act differently
-				continue
-			}
-			headers = append(headers, *header)
+func (d *distributor) registerPath(path, method string, handler pathHandler) {
+	if _, pathExists := d.paths[path]; !pathExists {
+		d.paths[path] = map[string]pathHandler{
+			method: handler,
 		}
+	} else if _, methodExists := d.paths[path][method]; !methodExists {
+		d.paths[path][method] = handler
+	} else {
+		log.Fatalln("method", method, "already registered for path", path)
 	}
 
-	firstLine := strings.Split(headlines[0], " ")
-	if len(firstLine) != 3 {
-		return nil, errors.New("malformed request")
-	}
-	method, target, protocol := firstLine[0], firstLine[1], firstLine[2]
-
-	m, err := validateHttpMethod(method)
-	if err != nil {
-		return nil, err
-	}
-
-	t := validateHttpTarget(target)
-	if !t {
-		fmt.Println("The http target is invalid")
-	}
-
-	v, err := validateHttpVersion(protocol)
-	if err != nil {
-		return nil, err
-	}
-
-	return &httpRequest{
-		startLine: startLine{
-			httpMethod:    m,
-			requestTarget: target,
-			httpVersion:   v,
-		},
-		headers: headers,
-		body:    body,
-	}, nil
+	log.Println("registered method", method, "for path", path)
 }
 
-func composeRequest(request *httpRequest) string {
-	m := fmt.Sprintf("%s %s %s\r\n\r\n",
-		request.startLine.httpMethod,
-		request.startLine.requestTarget,
-		request.startLine.httpVersion,
-	)
-	return m
-}
-
-func composeResponse(response *httpResponse) string {
-	statusLine := fmt.Sprintf("%s %s %s\r\n",
-		response.statusLine.httpVersion,
-		response.statusLine.httpStatusCode,
-		response.statusLine.httpStatusText,
-	)
-
-	headers := ""
-	for _, v := range response.headers {
-		headers += fmt.Sprintf("%s: %s\r\n", v.name, v.value)
-	}
-
-	return fmt.Sprintf("%s%s\r\n%s", statusLine, headers, response.body)
-}
-
-func handleEchoResponse(req *httpRequest) *httpResponse {
-	return &httpResponse{
-		statusLine: statusLine{
-			httpVersion:    httpVersion(httpVersion_11),
-			httpStatusCode: httpStatusCode(httpStatusOK),
-			httpStatusText: httpStatusText(httpStatusTextOK),
-		},
-		headers: []httpHeader{
-			{
-				name:  httpHeaderKey(httpHeaderContentType),
-				value: "text/plain",
-			},
-			{
-				name:  httpHeaderKey(httpHeaderContentLength),
-				value: strconv.Itoa(len(req.startLine.requestTarget[6:])),
-			},
-		},
-		body: req.startLine.requestTarget[6:],
-	}
-}
-
-func handleUserAgent(req *httpRequest) *httpResponse {
-	var ua string
-	for _, v := range req.headers {
-		if v.name == httpHeaderUserAgent {
-			ua = v.value
-			break
-		}
-	}
-
-	return &httpResponse{
-		statusLine: statusLine{
-			httpVersion:    httpVersion(httpVersion_11),
-			httpStatusCode: httpStatusCode(httpStatusOK),
-			httpStatusText: httpStatusText(httpStatusTextOK),
-		},
-		headers: []httpHeader{
-			{
-				name:  httpHeaderKey(httpHeaderContentType),
-				value: "text/plain",
-			},
-			{
-				name:  httpHeaderKey(httpHeaderContentLength),
-				value: strconv.Itoa(len(ua)),
-			},
-		},
-		body: ua,
-	}
-}
-
-func handleFileRequest(req *httpRequest) *httpResponse {
-
-	response := &httpResponse{
-		statusLine: statusLine{
-			httpVersion:    httpVersion(httpVersion_11),
-			httpStatusCode: httpStatusCode(httpStatusNotFound),
-			httpStatusText: httpStatusText(httpStatusTextNotFound),
-		},
-		headers: nil,
-		body:    "",
-	}
-
-	// Filename at path /files/<filename>
-	filename := req.startLine.requestTarget[7:]
-
-	fmt.Println("Reading file: ", Config.serveDir+"/"+filename)
-	data, err := os.ReadFile(Config.serveDir + "/" + filename)
-	if err != nil {
-		return response
-	}
-
-	response.statusLine.httpStatusCode = httpStatusCode(httpStatusOK)
-	response.statusLine.httpStatusText = httpStatusText(httpStatusTextOK)
-	response.headers = []httpHeader{
-		{name: httpHeaderKey(httpHeaderContentType), value: "application/octet-stream"},
-		{name: httpHeaderKey(httpHeaderContentLength), value: strconv.Itoa(len(string(data)))},
-	}
-	response.body = string(data)
-
-	return response
-}
-
-func handleRootResponse() *httpResponse {
-	return &httpResponse{
-		statusLine: statusLine{
-			httpVersion:    httpVersion(httpVersion_11),
-			httpStatusCode: httpStatusCode(httpStatusOK),
-			httpStatusText: httpStatusText(httpStatusTextOK),
-		},
-		headers: nil,
-		body:    "",
-	}
-}
-
-func handleDefaultResponse() *httpResponse {
-	return &httpResponse{
-		statusLine: statusLine{
-			httpVersion:    httpVersion(httpVersion_11),
-			httpStatusCode: httpStatusCode(httpStatusNotFound),
-			httpStatusText: httpStatusText(httpStatusTextNotFound),
-		},
-		headers: nil,
-		body:    "",
-	}
-}
-
-func connHandler(conn net.Conn) {
-
+func (d *distributor) handle(conn net.Conn) {
 	defer conn.Close()
 
 	buffer := make([]byte, 1024)
 	_, err := conn.Read(buffer)
 	if err != nil {
-		fmt.Println("Error reading connection: ", err.Error())
-		os.Exit(1)
+		log.Fatalln("error reading connection: ", err.Error())
 	}
 
 	req, err := parseRequest(string(buffer))
 	if err != nil {
-		fmt.Println("Error parsing request: ", err.Error())
-		os.Exit(1)
+		log.Fatalln("error parsing request: ", err.Error())
 	}
-	fmt.Println("Received request:")
-	fmt.Print(composeRequest(req))
+	log.Printf("client[%s]: %s", req.Method(), req.Path())
 
-	var res *httpResponse
-	switch {
-	case req.startLine.requestTarget == "/":
-		res = handleRootResponse()
-	case strings.HasPrefix(req.startLine.requestTarget, "/echo/"):
-		res = handleEchoResponse(req)
-	case req.startLine.requestTarget == "/user-agent":
-		res = handleUserAgent(req)
-	case strings.HasPrefix(req.startLine.requestTarget, "/files/"):
-		res = handleFileRequest(req)
-	default:
-		res = handleDefaultResponse()
+	res := httpResponse{}
+	matched := false
+
+	for path, methods := range d.paths {
+		matchAll := false
+		if string(path[len(path)-1]) == "*" {
+			matchAll = true
+		}
+
+		// path in form /foo, perform exact match
+		if !matchAll && path == req.Path() {
+			matched = true
+
+			// path in form /foo*, perform prefix match
+		} else if matchAll && len(path) <= len(req.Path()) &&
+			strings.HasPrefix(req.Path(), path[:len(path)-1]) {
+			matched = true
+		}
+
+		// match method
+		if matched {
+			handler, ok := methods[req.Method()]
+			if ok {
+				res = *handler(req)
+				break
+			}
+
+			// It is mandatory to set Allow header
+			// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
+			keys := make([]string, 0, len(methods))
+			for m := range methods {
+				keys = append(keys, m)
+			}
+			allowedMethods := strings.Join(keys, ", ")
+
+			res.setStatus(httpStatusMethodNotAllowed)
+			res.setHeader(httpStatusMethodNotAllowed, allowedMethods)
+
+			break
+		}
 	}
 
-	out := composeResponse(res)
+	if !matched {
+		res.setStatus(httpStatusNotFound)
+	}
 
-	_, err = conn.Write([]byte(out))
+	_, err = conn.Write([]byte(res.ToString()))
 	if err != nil {
-		fmt.Println("Error writing to connection: ", err.Error())
-		os.Exit(1)
+		log.Fatalln("error writing to connection: ", err.Error())
 	}
-
-}
-
-type config struct {
-	serveDir string
+	log.Printf("server[%s]", res.Status())
 }
 
 func main() {
 
-	serveDir := flag.String("directory", "/tmp/data/codecrafters.io/http-server-tester/", "Directory to serve files from")
-	flag.Parse()
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	Config.serveDir = *serveDir
-
-	fmt.Println("Server configured to serve from directory", Config.serveDir)
+	configureServer()
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
-		os.Exit(1)
+		log.Fatalln("failed to bind to port 4221")
 	}
+	log.Println("server started serving on port 4221")
+
+	d := newDistributor()
+	d.registerPath("/", httpMethodGet, handleRootResponse)
+	d.registerPath("/user-agent", httpMethodGet, handleUserAgent)
+	d.registerPath("/echo/*", httpMethodGet, handleEchoResponse)
+	d.registerPath("/files/*", httpMethodGet, handleFileRequest)
+	d.registerPath("/files/*", httpMethodPost, handleFilePost)
 
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection: ", err.Error())
-			os.Exit(1)
+			log.Fatalln("error accepting connection: ", err.Error())
 		}
-		go connHandler(conn)
+
+		go d.handle(conn)
 	}
 }
