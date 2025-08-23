@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -39,16 +38,16 @@ func handleEchoResponse(req *request) *response {
 func handleUserAgent(req *request) *response {
 	res := newResponse()
 
-	ua, err := req.Header(headerUserAgent)
-	if err != nil {
+	ua, ok := req.headers[headerUserAgent]
+	if !ok {
 		res.setStatus(statusNotFound)
 		return res
 	}
 
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "text/plain")
-	res.setHeader(headerContentLength, strconv.Itoa(len(ua)))
-	res.setBody(ua)
+	res.setHeader(headerContentLength, strconv.Itoa(len(ua.value)))
+	res.setBody(ua.value)
 
 	return res
 }
@@ -79,47 +78,53 @@ func handleFileRequest(req *request) *response {
 func handleFilePost(req *request) *response {
 	res := newResponse()
 
+	cl, ok := req.headers[headerContentLength]
+	if !ok {
+		log.Println("bad request: content-length header not received")
+		res.setStatus(statusLengthRequired)
+		return res
+	}
+
+	cBytes, err := strconv.Atoi(cl.value)
+	if err != nil {
+		log.Println("error: content-length parsing error")
+		res.setStatus(statusBadRequest)
+		return res
+	}
+
+	if cBytes > Config.maxFileSizeBytes {
+		log.Println("error: content too large")
+		res.setStatus(statusContentTooLarge)
+		return res
+	}
+
 	filename := req.Path()[7:]
 	path := Config.serveDir + "/" + filename
 
-	//TODO: do something smarter
-	_, err := os.Stat(path)
+	_, err = os.Stat(path)
 	if err == nil {
-		log.Fatalln("file already exists, exiting for safety")
-	}
-
-	fmt.Println("saving this to a file", req.body)
-	fmt.Println(req.Header(headerContentLength))
-
-	err = os.WriteFile(Config.serveDir+"/"+filename, []byte(req.body), 0666)
-	if err != nil {
-		log.Fatal(err)
+		log.Println("error: file already exists")
+		res.setStatus(statusForbiden)
+		return res
 	}
 
 	file, err := os.Create(path)
 	if err != nil {
-		log.Fatalln("Error creating file:", err)
+		log.Println("error creating file:", err)
+		res.setStatus(statusInternalServerError)
+		return res
 	}
 	defer file.Close()
 
-	// Write only Content-Length of data
-	headerVal, err := req.Header(headerContentLength)
-	if err != nil {
-		log.Fatalln("content-length not received")
-	}
-
-	length, err := strconv.Atoi(headerVal)
-	if err != nil {
-		log.Fatalln("wtf just happened")
-	}
-
-	content := req.body[:length]
-
+	content := req.body[:cBytes]
 	_, err = io.WriteString(file, content)
 	if err != nil {
-		log.Println("Error writing to file:", err)
+		log.Println("error writing to file:", err)
+		res.setStatus(statusInternalServerError)
+		return res
 	}
 
+	log.Println(cBytes, " bytes written to ", path)
 	res.setStatus(statusCreated)
 
 	return res

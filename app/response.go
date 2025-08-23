@@ -6,10 +6,16 @@ import (
 )
 
 const (
-	statusOK                  = "200"
-	statusCreated             = "201"
-	statusNotFound            = "404"
-	statusMethodNotAllowed    = "405"
+	statusOK      = "200"
+	statusCreated = "201"
+
+	statusBadRequest       = "400"
+	statusForbiden         = "403"
+	statusNotFound         = "404"
+	statusMethodNotAllowed = "405"
+	statusLengthRequired   = "411"
+	statusContentTooLarge  = "413"
+
 	statusInternalServerError = "500"
 )
 
@@ -54,16 +60,24 @@ func (r *response) ToString() string {
 func statusText(status string) string {
 	s := ""
 	switch status {
-	case statusCreated:
-		s = "Created"
-	case statusMethodNotAllowed:
-		s = "Method Not Allowed"
-	case statusInternalServerError:
-		s = "Internal Server Error"
-	case statusNotFound:
-		s = "Not Found"
 	case statusOK:
 		s = "OK"
+	case statusCreated:
+		s = "Created"
+	case statusBadRequest:
+		s = "Bad Request"
+	case statusForbiden:
+		s = "Forbidden"
+	case statusNotFound:
+		s = "Not Found"
+	case statusMethodNotAllowed:
+		s = "Method Not Allowed"
+	case statusLengthRequired:
+		s = "Length Required"
+	case statusContentTooLarge:
+		s = "Content Too Large"
+	case statusInternalServerError:
+		s = "Internal Server Error"
 	default:
 		log.Fatalln("invalid status", status)
 	}

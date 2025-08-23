@@ -45,15 +45,6 @@ func (r *request) ToString() string {
 	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", r.method, r.target, r.version, headers, r.body)
 }
 
-func (r *request) Header(header string) (string, error) {
-	for _, v := range r.headers {
-		if v.name == header {
-			return v.value, nil
-		}
-	}
-	return "", errors.New("header not found")
-}
-
 func (r *request) Path() string {
 	return r.target
 }
