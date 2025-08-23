@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type pathHandler func(*httpRequest) *httpResponse
+type pathHandler func(*request) *response
 
 // The distributor maps paths and methods to their handlers
 //
@@ -58,7 +58,9 @@ func (d *distributor) handle(conn net.Conn) {
 	}
 	log.Printf("client[%s]: %s", req.Method(), req.Path())
 
-	res := httpResponse{}
+	res := response{
+		version: version_11,
+	}
 	matched := false
 
 	for path, methods := range d.paths {
@@ -93,15 +95,15 @@ func (d *distributor) handle(conn net.Conn) {
 			}
 			allowedMethods := strings.Join(keys, ", ")
 
-			res.setStatus(httpStatusMethodNotAllowed)
-			res.setHeader(httpStatusMethodNotAllowed, allowedMethods)
+			res.setStatus(statusMethodNotAllowed)
+			res.setHeader(statusMethodNotAllowed, allowedMethods)
 
 			break
 		}
 	}
 
 	if !matched {
-		res.setStatus(httpStatusNotFound)
+		res.setStatus(statusNotFound)
 	}
 
 	_, err = conn.Write([]byte(res.ToString()))
@@ -124,11 +126,11 @@ func main() {
 	log.Println("server started serving on port 4221")
 
 	d := newDistributor()
-	d.registerPath("/", httpMethodGet, handleRootResponse)
-	d.registerPath("/user-agent", httpMethodGet, handleUserAgent)
-	d.registerPath("/echo/*", httpMethodGet, handleEchoResponse)
-	d.registerPath("/files/*", httpMethodGet, handleFileRequest)
-	d.registerPath("/files/*", httpMethodPost, handleFilePost)
+	d.registerPath("/", methodGet, handleRootResponse)
+	d.registerPath("/user-agent", methodGet, handleUserAgent)
+	d.registerPath("/echo/*", methodGet, handleEchoResponse)
+	d.registerPath("/files/*", methodGet, handleFileRequest)
+	d.registerPath("/files/*", methodPost, handleFilePost)
 
 	for {
 		conn, err := l.Accept()
