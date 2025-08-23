@@ -10,14 +10,14 @@ type request struct {
 	version string
 	method  string
 	target  string
-	headers map[string]*header
+	headers headers
 	body    string
 }
 
 func newRequest() *request {
 	return &request{
 		version: version_11,
-		headers: map[string]*header{},
+		headers: headers{},
 	}
 }
 
@@ -29,20 +29,12 @@ func (r *request) isValid() bool {
 		return false
 	}
 	// target not validated
-	for _, h := range r.headers {
-		if !h.isValid() {
-			return false
-		}
-	}
+	// headers are validated during parsing
 	return true
 }
 
 func (r *request) ToString() string {
-	headers := ""
-	for _, h := range r.headers {
-		headers += h.ToString()
-	}
-	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", r.method, r.target, r.version, headers, r.body)
+	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", r.method, r.target, r.version, r.headers.ToString(), r.body)
 }
 
 func (r *request) Path() string {
@@ -68,16 +60,8 @@ func parseRequest(r string) (*request, error) {
 	}
 	req.method, req.target, req.version = firstLine[0], firstLine[1], firstLine[2]
 
-	// parse headers
 	if len(headlines) > 1 {
-		for _, h := range headlines[1:] {
-			header, err := parseHeader(h)
-			if err != nil {
-				// ignore invalid headers, maybe we should act differently
-				continue
-			}
-			req.headers[header.name] = header
-		}
+		req.headers = parseHeaders(headlines[1:])
 	}
 
 	if !req.isValid() {

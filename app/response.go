@@ -22,19 +22,19 @@ const (
 type response struct {
 	version string
 	status  string
-	headers []header
+	headers headers
 	body    string
 }
 
 func newResponse() *response {
 	return &response{
 		version: version_11,
-		headers: []header{},
+		headers: headers{},
 	}
 }
 
-func (r *response) setHeader(header, value string) {
-	r.headers = append(r.headers, *newHeader(header, value))
+func (r *response) setHeader(header string, value any) {
+	r.headers[header] = value
 }
 
 func (r *response) setStatus(status string) {
@@ -50,11 +50,7 @@ func (r *response) setBody(body string) {
 }
 
 func (r *response) ToString() string {
-	headers := ""
-	for _, h := range r.headers {
-		headers += h.ToString()
-	}
-	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", r.version, r.status, statusText(r.status), headers, r.body)
+	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", r.version, r.status, statusText(r.status), r.headers.ToString(), r.body)
 }
 
 func statusText(status string) string {

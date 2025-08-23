@@ -1,8 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"log"
+	"strconv"
 	"strings"
 )
 
@@ -15,49 +16,63 @@ const (
 	headerUserAgent       = "User-Agent"
 )
 
-var knownHeaders = map[string]bool{
-	headerAcceptEncoding:  true,
-	headerAllow:           true,
-	headerContentEncoding: true,
-	headerContentType:     true,
-	headerContentLength:   true,
-	headerUserAgent:       true,
-}
-
-type header struct {
-	name  string
-	value string
-}
-
-func newHeader(key, val string) *header {
-	return &header{
-		name:  key,
-		value: val,
+func (h *headers) ToString() string {
+	var b strings.Builder
+	for hdr, val := range *h {
+		var v string
+		if hdr == headerContentLength {
+			v = strconv.Itoa(val.(int))
+		} else if hdr == headerAcceptEncoding {
+			l := []string{}
+			for e, _ := range val.(map[string]bool) {
+				l = append(l, e)
+			}
+			v = strings.Join(l, ",")
+		} else {
+			v = val.(string)
+		}
+		fmt.Fprintf(&b, "%s: %s\r\n", hdr, v)
 	}
+	return b.String()
 }
 
-func (h *header) isValid() bool {
-	if _, ok := knownHeaders[h.name]; !ok {
-		return false
+type headers map[string]any
+
+func parseHeaders(data []string) headers {
+	h := headers{}
+	for _, l := range data {
+		key, value, found := strings.Cut(l, ": ")
+		if !found {
+			log.Println("error parsing header, skipping")
+			continue
+		}
+
+		switch key {
+		case headerAcceptEncoding: // https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Encoding
+			e := map[string]bool{}
+			for _, enc := range strings.Split(value, ",") {
+				e[strings.TrimSpace(enc)] = true
+			}
+			h[key] = e
+		case headerAllow:
+			h[key] = value
+		case headerContentEncoding:
+			h[key] = value
+		case headerContentType:
+			h[key] = value
+		case headerContentLength:
+			len, err := strconv.Atoi(value)
+			if err != nil {
+				log.Println("error parsing header, skipping")
+				continue
+			}
+			h[key] = len
+		case headerUserAgent:
+			h[key] = value
+		default:
+			log.Println("invalid header, skipping:", key, value)
+			continue
+		}
 	}
-	return true
-}
-
-func (h *header) ToString() string {
-	return fmt.Sprintf("%s: %s\r\n", h.name, h.value)
-}
-
-func parseHeader(header string) (*header, error) {
-
-	key, value, found := strings.Cut(header, ": ")
-	if !found {
-		return nil, errors.New("invalid header")
-	}
-
-	h := newHeader(key, value)
-	if !h.isValid() {
-		return nil, errors.New("invalid header")
-	}
-
-	return h, nil
+	return h
 }

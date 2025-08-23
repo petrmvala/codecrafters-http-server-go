@@ -60,7 +60,7 @@ func (d *distributor) handle(conn net.Conn) {
 
 	res := response{
 		version: version_11,
-		headers: []header{},
+		headers: headers{},
 	}
 	matched := false
 

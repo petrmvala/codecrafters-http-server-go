@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
 )
 
 // Respond with Status OK to GET /
@@ -21,14 +20,14 @@ func handleEchoResponse(req *request) *response {
 	str := req.Path()[6:]
 
 	if enc, ok := req.headers[headerAcceptEncoding]; ok {
-		if enc.value == "gzip" {
+		if _, ok := enc.(map[string]bool)["gzip"]; ok {
 			res.setHeader(headerContentEncoding, "gzip")
 		}
 	}
 
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "text/plain")
-	res.setHeader(headerContentLength, strconv.Itoa(len(str)))
+	res.setHeader(headerContentLength, len(str))
 	res.setBody(str)
 
 	return res
@@ -43,11 +42,12 @@ func handleUserAgent(req *request) *response {
 		res.setStatus(statusNotFound)
 		return res
 	}
+	usrAg := ua.(string)
 
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "text/plain")
-	res.setHeader(headerContentLength, strconv.Itoa(len(ua.value)))
-	res.setBody(ua.value)
+	res.setHeader(headerContentLength, len(usrAg))
+	res.setBody(usrAg)
 
 	return res
 }
@@ -68,7 +68,7 @@ func handleFileRequest(req *request) *response {
 
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "application/octet-stream")
-	res.setHeader(headerContentLength, strconv.Itoa(len(string(data))))
+	res.setHeader(headerContentLength, len(string(data)))
 	res.setBody(string(data))
 
 	return res
@@ -84,13 +84,7 @@ func handleFilePost(req *request) *response {
 		res.setStatus(statusLengthRequired)
 		return res
 	}
-
-	cBytes, err := strconv.Atoi(cl.value)
-	if err != nil {
-		log.Println("error: content-length parsing error")
-		res.setStatus(statusBadRequest)
-		return res
-	}
+	cBytes := cl.(int)
 
 	if cBytes > Config.maxFileSizeBytes {
 		log.Println("error: content too large")
@@ -101,7 +95,7 @@ func handleFilePost(req *request) *response {
 	filename := req.Path()[7:]
 	path := Config.serveDir + "/" + filename
 
-	_, err = os.Stat(path)
+	_, err := os.Stat(path)
 	if err == nil {
 		log.Println("error: file already exists")
 		res.setStatus(statusForbiden)
