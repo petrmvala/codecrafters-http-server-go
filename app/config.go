@@ -11,7 +11,9 @@ type config struct {
 	serveDir string
 }
 
-func configureServer() {
+func configure() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	serveDir := flag.String("directory", "/tmp/data/codecrafters.io/http-server-tester/", "Directory to serve files from")
 	flag.Parse()
 

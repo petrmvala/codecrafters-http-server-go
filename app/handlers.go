@@ -21,6 +21,12 @@ func handleEchoResponse(req *request) *response {
 
 	str := req.Path()[6:]
 
+	if enc, ok := req.headers[headerAcceptEncoding]; ok {
+		if enc.value == "gzip" {
+			res.setHeader(headerContentEncoding, "gzip")
+		}
+	}
+
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "text/plain")
 	res.setHeader(headerContentLength, strconv.Itoa(len(str)))

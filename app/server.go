@@ -60,6 +60,7 @@ func (d *distributor) handle(conn net.Conn) {
 
 	res := response{
 		version: version_11,
+		headers: []header{},
 	}
 	matched := false
 
@@ -115,9 +116,7 @@ func (d *distributor) handle(conn net.Conn) {
 
 func main() {
 
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	configureServer()
+	configure()
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
@@ -135,9 +134,9 @@ func main() {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Fatalln("error accepting connection: ", err.Error())
+			log.Println("error accepting connection: ", err.Error())
+			continue
 		}
-
 		go d.handle(conn)
 	}
 }

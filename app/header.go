@@ -7,17 +7,21 @@ import (
 )
 
 const (
-	headerAllow         = "Allow"
-	headerContentType   = "Content-Type"
-	headerContentLength = "Content-Length"
-	headerUserAgent     = "User-Agent"
+	headerAcceptEncoding  = "Accept-Encoding"
+	headerAllow           = "Allow"
+	headerContentEncoding = "Content-Encoding"
+	headerContentType     = "Content-Type"
+	headerContentLength   = "Content-Length"
+	headerUserAgent       = "User-Agent"
 )
 
 var knownHeaders = map[string]bool{
-	headerAllow:         true,
-	headerContentType:   true,
-	headerContentLength: true,
-	headerUserAgent:     true,
+	headerAcceptEncoding:  true,
+	headerAllow:           true,
+	headerContentEncoding: true,
+	headerContentType:     true,
+	headerContentLength:   true,
+	headerUserAgent:       true,
 }
 
 type header struct {

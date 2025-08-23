@@ -10,8 +10,15 @@ type request struct {
 	version string
 	method  string
 	target  string
-	headers []header
+	headers map[string]*header
 	body    string
+}
+
+func newRequest() *request {
+	return &request{
+		version: version_11,
+		headers: map[string]*header{},
+	}
 }
 
 func (r *request) isValid() bool {
@@ -56,7 +63,7 @@ func (r *request) Method() string {
 }
 
 func parseRequest(r string) (*request, error) {
-	req := &request{}
+	req := newRequest()
 
 	// If the string cannot be split, body is set to ""
 	head, body, _ := strings.Cut(r, "\r\n\r\n")
@@ -78,7 +85,7 @@ func parseRequest(r string) (*request, error) {
 				// ignore invalid headers, maybe we should act differently
 				continue
 			}
-			req.headers = append(req.headers, *header)
+			req.headers[header.name] = header
 		}
 	}
 
