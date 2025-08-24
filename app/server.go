@@ -17,31 +17,15 @@ const (
 type pathHandler func(*request) *response
 
 type distributor struct {
-	paths    map[string]map[string]pathHandler
 	pathGet  map[string]pathHandler
 	pathPost map[string]pathHandler
 }
 
 func newDistributor() *distributor {
-	paths := make(map[string]map[string]pathHandler)
 	return &distributor{
-		paths:    paths,
 		pathGet:  map[string]pathHandler{},
 		pathPost: map[string]pathHandler{},
 	}
-}
-
-func (d *distributor) registerPath(path, method string, handler pathHandler) {
-	if _, pathExists := d.paths[path]; !pathExists {
-		d.paths[path] = map[string]pathHandler{
-			method: handler,
-		}
-	} else if _, methodExists := d.paths[path][method]; !methodExists {
-		d.paths[path][method] = handler
-	} else {
-		log.Fatalln("method", method, "already registered for path", path)
-	}
-	log.Println("registered method", method, "for path", path)
 }
 
 func (d *distributor) get(path string, handler pathHandler) {
@@ -84,76 +68,47 @@ func (d *distributor) handle(conn net.Conn) {
 		headers: headers{},
 	}
 
-	matched := false
-
-	// if req.method == methodGet {
-	// 	for path, handler := range d.pathGet {
-	// 		globMatch := false
-	// 		if string(path[len(path)-1]) == "*" {
-	// 			globMatch = true
-	// 		}
-	// 		if !globMatch && path == req.target { // path /foo, perform exact match
-	// 			matched = true
-	// 		} else if globMatch && len(path) <= len(req.target) && strings.HasPrefix(req.target, path[:len(path)-1]) { // path in form /foo*, perform prefix match
-	// 			matched = true
-	// 		} else {
-	// 			continue
-	// 		}
-	// 		res = *handler(req)
-	// 		break
-	// 	}
-	// } else if req.method == methodPost {
-
-	// }
-
 	// The server only supports one level of nesting
 	// If it ends without a slash, path needs to be matched exactly
 	// If it ends with a slash, path can extend past slash
 	pathBase := req.target
-	log.Println("pathBase", pathBase)
 	sl := strings.Index(req.target[1:], "/")
 	if sl != -1 {
 		pathBase = req.target[:sl+2]
-		log.Println("second slash found, pathBase", pathBase)
 	}
 	// now is pathBase == / or /echo -> exact match, OR /echo/ -> prefix match (which is also exact match)
 
-	for path, methods := range d.paths {
-		if path != pathBase {
-			log.Println("path", path, "doesn't match pathBase", pathBase)
-			continue
-		}
-		matched = true
+	getHandler, gok := d.pathGet[pathBase]
+	postHandler, pok := d.pathPost[pathBase]
 
-		handler, ok := methods[req.method]
-		if ok {
-			res = *handler(req)
-			break
-		}
-
+	if !gok && !pok {
+		res.setStatus(statusNotFound)
+	} else if (gok && req.method != methodGet && !pok) || (!gok && pok && req.method != methodPost) || (gok && req.method != methodGet && pok && req.method != methodPost) {
 		// It is mandatory to set Allow header
 		// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
-		keys := make([]string, 0, len(methods))
-		for m := range methods {
-			keys = append(keys, m)
-		}
-		allowedMethods := strings.Join(keys, ", ")
-
 		res.setStatus(statusMethodNotAllowed)
-		res.setHeader(statusMethodNotAllowed, allowedMethods)
-
-		break
-	}
-
-	if !matched {
-		res.setStatus(statusNotFound)
+		allowedMethods := []string{}
+		if gok {
+			allowedMethods = append(allowedMethods, methodGet)
+		}
+		if pok {
+			allowedMethods = append(allowedMethods, methodPost)
+		}
+		res.setHeader(headerAllow, strings.Join(allowedMethods, ", "))
+	} else if gok && req.method == methodGet {
+		res = *getHandler(req)
+	} else if pok && req.method == methodPost {
+		res = *postHandler(req)
+	} else {
+		log.Fatalln("server programming error")
 	}
 
 	_, err = conn.Write([]byte(res.ToString()))
 	if err != nil {
-		log.Fatalln("error writing to connection: ", err.Error())
+		log.Println("closing connection:", err.Error())
+		return
 	}
-	log.Printf("server[%s]", res.status)
+	log.Printf("connection closed [%s]", res.status)
 }
 
 var Config config
@@ -182,16 +137,11 @@ func main() {
 	log.Println("started serving on port 4221")
 
 	d := newDistributor()
-	d.registerPath("/", methodGet, handleRootResponse)
-	d.registerPath("/user-agent", methodGet, handleUserAgent)
-	d.registerPath("/echo/", methodGet, handleEchoResponse)
-	d.registerPath("/files/", methodGet, handleFileRequest)
-	d.registerPath("/files/", methodPost, handleFilePost)
-	// d.get("/", handleRootResponse)
-	// d.get("/user-agent", handleUserAgent)
-	// d.get("/echo/*", handleEchoResponse)
-	// d.get("/files/*", handleFileRequest)
-	// d.post("/files/*", handleFilePost)
+	d.get("/", handleRootResponse)
+	d.get("/user-agent", handleUserAgent)
+	d.get("/echo/", handleEchoResponse)
+	d.get("/files/", handleFileRequest)
+	d.post("/files/", handleFilePost)
 
 	for {
 		conn, err := l.Accept()
