@@ -86,44 +86,6 @@ func (d *distributor) handle(conn net.Conn) {
 
 	matched := false
 
-	for path, methods := range d.paths {
-		matchAll := false
-		if string(path[len(path)-1]) == "*" {
-			matchAll = true
-		}
-
-		// path in form /foo, perform exact match
-		if !matchAll && path == req.target {
-			matched = true
-
-			// path in form /foo*, perform prefix match
-		} else if matchAll && len(path) <= len(req.target) &&
-			strings.HasPrefix(req.target, path[:len(path)-1]) {
-			matched = true
-		}
-
-		// match method
-		if matched {
-			handler, ok := methods[req.method]
-			if ok {
-				res = *handler(req)
-				break
-			}
-
-			// It is mandatory to set Allow header
-			// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
-			keys := make([]string, 0, len(methods))
-			for m := range methods {
-				keys = append(keys, m)
-			}
-			allowedMethods := strings.Join(keys, ", ")
-
-			res.setStatus(statusMethodNotAllowed)
-			res.setHeader(statusMethodNotAllowed, allowedMethods)
-
-			break
-		}
-	}
 	// if req.method == methodGet {
 	// 	for path, handler := range d.pathGet {
 	// 		globMatch := false
@@ -144,6 +106,45 @@ func (d *distributor) handle(conn net.Conn) {
 
 	// }
 
+	// The server only supports one level of nesting
+	// If it ends without a slash, path needs to be matched exactly
+	// If it ends with a slash, path can extend past slash
+	pathBase := req.target
+	log.Println("pathBase", pathBase)
+	sl := strings.Index(req.target[1:], "/")
+	if sl != -1 {
+		pathBase = req.target[:sl+2]
+		log.Println("second slash found, pathBase", pathBase)
+	}
+	// now is pathBase == / or /echo -> exact match, OR /echo/ -> prefix match (which is also exact match)
+
+	for path, methods := range d.paths {
+		if path != pathBase {
+			log.Println("path", path, "doesn't match pathBase", pathBase)
+			continue
+		}
+		matched = true
+
+		handler, ok := methods[req.method]
+		if ok {
+			res = *handler(req)
+			break
+		}
+
+		// It is mandatory to set Allow header
+		// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
+		keys := make([]string, 0, len(methods))
+		for m := range methods {
+			keys = append(keys, m)
+		}
+		allowedMethods := strings.Join(keys, ", ")
+
+		res.setStatus(statusMethodNotAllowed)
+		res.setHeader(statusMethodNotAllowed, allowedMethods)
+
+		break
+	}
+
 	if !matched {
 		res.setStatus(statusNotFound)
 	}
@@ -152,7 +153,7 @@ func (d *distributor) handle(conn net.Conn) {
 	if err != nil {
 		log.Fatalln("error writing to connection: ", err.Error())
 	}
-	log.Printf("server[%s]", res.Status())
+	log.Printf("server[%s]", res.status)
 }
 
 var Config config
@@ -183,9 +184,9 @@ func main() {
 	d := newDistributor()
 	d.registerPath("/", methodGet, handleRootResponse)
 	d.registerPath("/user-agent", methodGet, handleUserAgent)
-	d.registerPath("/echo/*", methodGet, handleEchoResponse)
-	d.registerPath("/files/*", methodGet, handleFileRequest)
-	d.registerPath("/files/*", methodPost, handleFilePost)
+	d.registerPath("/echo/", methodGet, handleEchoResponse)
+	d.registerPath("/files/", methodGet, handleFileRequest)
+	d.registerPath("/files/", methodPost, handleFilePost)
 	// d.get("/", handleRootResponse)
 	// d.get("/user-agent", handleUserAgent)
 	// d.get("/echo/*", handleEchoResponse)

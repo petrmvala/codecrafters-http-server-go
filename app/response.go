@@ -39,10 +39,6 @@ func (r *response) setStatus(status string) {
 	r.status = status
 }
 
-func (r *response) Status() string {
-	return r.status
-}
-
 func (r *response) setBody(body string) {
 	r.body = body
 }

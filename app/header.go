@@ -43,7 +43,7 @@ func parseHeaders(data []string) headers {
 	for _, l := range data {
 		key, value, found := strings.Cut(l, ": ")
 		if !found {
-			log.Println("error parsing header, skipping")
+			log.Println("cannot parse header, skipping")
 			continue
 		}
 
@@ -63,7 +63,7 @@ func parseHeaders(data []string) headers {
 		case headerContentLength:
 			len, err := strconv.Atoi(value)
 			if err != nil {
-				log.Println("error parsing header, skipping")
+				log.Println("cannot parse header, skipping")
 				continue
 			}
 			h[key] = len
