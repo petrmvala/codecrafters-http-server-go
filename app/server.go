@@ -16,25 +16,19 @@ const (
 
 type pathHandler func(*request) *response
 
-// The distributor maps paths and methods to their handlers
-//
-//	{
-//	  "/":     {"GET": getRoothandler}
-//	  "/path": {
-//			"GET": getPathhandler,
-//			"PUT": putPathhandler,
-//	  }
-//	  "/foo/*": {"GET": getFooHandler}
-//	}
 type distributor struct {
-	paths map[string]map[string]pathHandler
+	paths    map[string]map[string]pathHandler
+	pathGet  map[string]pathHandler
+	pathPost map[string]pathHandler
 }
 
 func newDistributor() *distributor {
-	var d distributor
-	d.paths = make(map[string]map[string]pathHandler)
-
-	return &d
+	paths := make(map[string]map[string]pathHandler)
+	return &distributor{
+		paths:    paths,
+		pathGet:  map[string]pathHandler{},
+		pathPost: map[string]pathHandler{},
+	}
 }
 
 func (d *distributor) registerPath(path, method string, handler pathHandler) {
@@ -47,29 +41,49 @@ func (d *distributor) registerPath(path, method string, handler pathHandler) {
 	} else {
 		log.Fatalln("method", method, "already registered for path", path)
 	}
-
 	log.Println("registered method", method, "for path", path)
 }
 
-func (d *distributor) handle(conn net.Conn) {
-	defer conn.Close()
+func (d *distributor) get(path string, handler pathHandler) {
+	if _, ok := d.pathGet[path]; ok {
+		log.Fatalln("invalid configuration: path already exists")
+	}
+	d.pathGet[path] = handler
+	log.Println("path registered: GET", path)
+}
 
+func (d *distributor) post(path string, handler pathHandler) {
+	if _, ok := d.pathPost[path]; ok {
+		log.Fatalln("invalid configuration: path already exists")
+	}
+	d.pathPost[path] = handler
+	log.Println("path registered: POST", path)
+}
+
+func (d *distributor) handle(conn net.Conn) {
 	buffer := make([]byte, 1024)
+
+	defer conn.Close()
 	_, err := conn.Read(buffer)
 	if err != nil {
-		log.Fatalln("error reading connection: ", err.Error())
+		log.Println("closing connection:", err.Error())
+		return
 	}
 
+	// perhaps I should pass the bytes
 	req, err := parseRequest(string(buffer))
 	if err != nil {
-		log.Fatalln("error parsing request: ", err.Error())
+		log.Println("closing connection:", err.Error())
+		return
 	}
 	//TODO: I am not validating method nor target here, I should just accept from IP, this is misguiding
 	log.Println("accepted connection:", req.method, req.target)
 
+	//TODO: I don't like this
 	res := response{
 		headers: headers{},
 	}
+
 	matched := false
 
 	for path, methods := range d.paths {
@@ -110,6 +124,25 @@ func (d *distributor) handle(conn net.Conn) {
 			break
 		}
 	}
+	// if req.method == methodGet {
+	// 	for path, handler := range d.pathGet {
+	// 		globMatch := false
+	// 		if string(path[len(path)-1]) == "*" {
+	// 			globMatch = true
+	// 		}
+	// 		if !globMatch && path == req.target { // path /foo, perform exact match
+	// 			matched = true
+	// 		} else if globMatch && len(path) <= len(req.target) && strings.HasPrefix(req.target, path[:len(path)-1]) { // path in form /foo*, perform prefix match
+	// 			matched = true
+	// 		} else {
+	// 			continue
+	// 		}
+	// 		res = *handler(req)
+	// 		break
+	// 	}
+	// } else if req.method == methodPost {
+
+	// }
 
 	if !matched {
 		res.setStatus(statusNotFound)
@@ -153,6 +186,11 @@ func main() {
 	d.registerPath("/echo/*", methodGet, handleEchoResponse)
 	d.registerPath("/files/*", methodGet, handleFileRequest)
 	d.registerPath("/files/*", methodPost, handleFilePost)
+	// d.get("/", handleRootResponse)
+	// d.get("/user-agent", handleUserAgent)
+	// d.get("/echo/*", handleEchoResponse)
+	// d.get("/files/*", handleFileRequest)
+	// d.post("/files/*", handleFilePost)
 
 	for {
 		conn, err := l.Accept()
