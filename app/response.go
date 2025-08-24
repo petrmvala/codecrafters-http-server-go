@@ -20,7 +20,6 @@ const (
 )
 
 type response struct {
-	version string
 	status  string
 	headers headers
 	body    string
@@ -28,7 +27,6 @@ type response struct {
 
 func newResponse() *response {
 	return &response{
-		version: version_11,
 		headers: headers{},
 	}
 }
@@ -50,7 +48,7 @@ func (r *response) setBody(body string) {
 }
 
 func (r *response) ToString() string {
-	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", r.version, r.status, statusText(r.status), r.headers.ToString(), r.body)
+	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", version11, r.status, statusText(r.status), r.headers.ToString(), r.body)
 }
 
 func statusText(status string) string {

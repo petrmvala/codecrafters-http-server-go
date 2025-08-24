@@ -17,7 +17,7 @@ func handleRootResponse(req *request) *response {
 func handleEchoResponse(req *request) *response {
 	res := newResponse()
 
-	str := req.Path()[6:]
+	str := req.target[6:]
 
 	if enc, ok := req.headers[headerAcceptEncoding]; ok {
 		if _, ok := enc.(map[string]bool)["gzip"]; ok {
@@ -56,7 +56,7 @@ func handleUserAgent(req *request) *response {
 func handleFileRequest(req *request) *response {
 	res := newResponse()
 
-	filename := req.Path()[7:]
+	filename := req.target[7:]
 
 	data, err := os.ReadFile(Config.serveDir + "/" + filename)
 	if err != nil {
@@ -92,7 +92,7 @@ func handleFilePost(req *request) *response {
 		return res
 	}
 
-	filename := req.Path()[7:]
+	filename := req.target[7:]
 	path := Config.serveDir + "/" + filename
 
 	_, err := os.Stat(path)

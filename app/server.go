@@ -1,9 +1,17 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net"
 	"strings"
+)
+
+const (
+	version11 = "HTTP/1.1"
+
+	methodGet  = "GET"
+	methodPost = "POST"
 )
 
 type pathHandler func(*request) *response
@@ -56,10 +64,10 @@ func (d *distributor) handle(conn net.Conn) {
 	if err != nil {
 		log.Fatalln("error parsing request: ", err.Error())
 	}
-	log.Printf("client[%s]: %s", req.Method(), req.Path())
+	//TODO: I am not validating method nor target here, I should just accept from IP, this is misguiding
+	log.Println("accepted connection:", req.method, req.target)
 
 	res := response{
-		version: version_11,
 		headers: headers{},
 	}
 	matched := false
@@ -71,18 +79,18 @@ func (d *distributor) handle(conn net.Conn) {
 		}
 
 		// path in form /foo, perform exact match
-		if !matchAll && path == req.Path() {
+		if !matchAll && path == req.target {
 			matched = true
 
 			// path in form /foo*, perform prefix match
-		} else if matchAll && len(path) <= len(req.Path()) &&
-			strings.HasPrefix(req.Path(), path[:len(path)-1]) {
+		} else if matchAll && len(path) <= len(req.target) &&
+			strings.HasPrefix(req.target, path[:len(path)-1]) {
 			matched = true
 		}
 
 		// match method
 		if matched {
-			handler, ok := methods[req.Method()]
+			handler, ok := methods[req.method]
 			if ok {
 				res = *handler(req)
 				break
