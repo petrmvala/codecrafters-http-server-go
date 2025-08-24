@@ -114,15 +114,30 @@ func (d *distributor) handle(conn net.Conn) {
 	log.Printf("server[%s]", res.Status())
 }
 
-func main() {
+var Config config
 
-	configure()
+type config struct {
+	serveDir         string
+	maxFileSizeBytes int
+}
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	serveDir := flag.String("directory", "/tmp/data/codecrafters.io/http-server-tester/", "Directory to serve files from")
+	maxFileSizeBytes := flag.Int("max-file-size", 1000000, "Max accepted file size in Bytes [1MB]")
+	flag.Parse()
+
+	Config = config{
+		serveDir:         *serveDir,
+		maxFileSizeBytes: *maxFileSizeBytes,
+	}
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		log.Fatalln("failed to bind to port 4221")
 	}
-	log.Println("server started serving on port 4221")
+	log.Println("started serving on port 4221")
 
 	d := newDistributor()
 	d.registerPath("/", methodGet, handleRootResponse)
