@@ -103,7 +103,7 @@ func (d *distributor) handle(conn net.Conn) {
 		log.Fatalln("server programming error")
 	}
 
-	_, err = conn.Write([]byte(res.ToString()))
+	_, err = conn.Write(res.Bytes())
 	if err != nil {
 		log.Println("closing connection:", err.Error())
 		return

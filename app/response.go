@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 )
@@ -22,7 +23,7 @@ const (
 type response struct {
 	status  string
 	headers headers
-	body    string
+	body    []byte
 }
 
 func newResponse() *response {
@@ -39,12 +40,18 @@ func (r *response) setStatus(status string) {
 	r.status = status
 }
 
-func (r *response) setBody(body string) {
+func (r *response) setBody(body []byte) {
 	r.body = body
 }
 
 func (r *response) ToString() string {
 	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", version11, r.status, statusText(r.status), r.headers.ToString(), r.body)
+}
+
+func (r *response) Bytes() []byte {
+	head := fmt.Sprintf("%s %s %s\r\n%s", version11, r.status, statusText(r.status), r.headers.ToString())
+	b := [][]byte{[]byte(head), r.body}
+	return bytes.Join(b, []byte("\r\n"))
 }
 
 func statusText(status string) string {

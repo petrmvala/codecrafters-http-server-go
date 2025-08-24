@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"io"
 	"log"
 	"os"
@@ -16,20 +18,30 @@ func handleRootResponse(req *request) *response {
 // Respond with string echoed in body to GET /echo/<string>
 func handleEchoResponse(req *request) *response {
 	res := newResponse()
-
 	str := req.target[6:]
-
-	if enc, ok := req.headers[headerAcceptEncoding]; ok {
-		if _, ok := enc.(map[string]bool)["gzip"]; ok {
-			res.setHeader(headerContentEncoding, "gzip")
-		}
-	}
 
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "text/plain")
-	res.setHeader(headerContentLength, len(str))
-	res.setBody(str)
 
+	if enc, ok := req.headers[headerAcceptEncoding]; ok {
+		if _, ok := enc.(map[string]bool)["gzip"]; ok {
+			var buf bytes.Buffer
+			w := gzip.NewWriter(&buf)
+			_, err := w.Write([]byte(str))
+			if err != nil {
+				log.Println("aborting compression:", err.Error())
+			}
+			if err := w.Close(); err != nil {
+				log.Println("aborting compression:", err.Error())
+			}
+			res.setHeader(headerContentLength, buf.Len())
+			res.setHeader(headerContentEncoding, "gzip")
+			res.setBody(buf.Bytes())
+			return res
+		}
+	}
+	res.setHeader(headerContentLength, len(str))
+	res.setBody([]byte(str))
 	return res
 }
 
@@ -47,7 +59,7 @@ func handleUserAgent(req *request) *response {
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "text/plain")
 	res.setHeader(headerContentLength, len(usrAg))
-	res.setBody(usrAg)
+	res.setBody([]byte(usrAg))
 
 	return res
 }
@@ -68,8 +80,8 @@ func handleFileRequest(req *request) *response {
 
 	res.setStatus(statusOK)
 	res.setHeader(headerContentType, "application/octet-stream")
-	res.setHeader(headerContentLength, len(string(data)))
-	res.setBody(string(data))
+	res.setHeader(headerContentLength, len(data))
+	res.setBody(data)
 
 	return res
 }
