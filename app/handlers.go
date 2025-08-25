@@ -6,24 +6,26 @@ import (
 	"io"
 	"log"
 	"os"
+
+	"github.com/codecrafters-io/http-server-starter-go/app/server"
 )
 
 // Respond with Status OK to GET /
-func handleRootResponse(req *request) *response {
-	res := newResponse()
-	res.setStatus(statusOK)
+func handleRootResponse(req *server.Request) *server.Response {
+	res := server.NewResponse()
+	res.SetStatus(server.StatusOK)
 	return res
 }
 
 // Respond with string echoed in body to GET /echo/<string>
-func handleEchoResponse(req *request) *response {
-	res := newResponse()
-	str := req.target[6:]
+func handleEchoResponse(req *server.Request) *server.Response {
+	res := server.NewResponse()
+	str := req.Target[6:]
 
-	res.setStatus(statusOK)
-	res.setHeader(headerContentType, "text/plain")
+	res.SetStatus(server.StatusOK)
+	res.SetHeader(server.HeaderContentType, "text/plain")
 
-	if enc, ok := req.headers[headerAcceptEncoding]; ok {
+	if enc, ok := req.Headers[server.HeaderAcceptEncoding]; ok {
 		if _, ok := enc.(map[string]bool)["gzip"]; ok {
 			var buf bytes.Buffer
 			w := gzip.NewWriter(&buf)
@@ -34,69 +36,69 @@ func handleEchoResponse(req *request) *response {
 			if err := w.Close(); err != nil {
 				log.Println("aborting compression:", err.Error())
 			}
-			res.setHeader(headerContentLength, buf.Len())
-			res.setHeader(headerContentEncoding, "gzip")
-			res.setBody(buf.Bytes())
+			res.SetHeader(server.HeaderContentLength, buf.Len())
+			res.SetHeader(server.HeaderContentEncoding, "gzip")
+			res.SetBody(buf.Bytes())
 			return res
 		}
 	}
-	res.setHeader(headerContentLength, len(str))
-	res.setBody([]byte(str))
+	res.SetHeader(server.HeaderContentLength, len(str))
+	res.SetBody([]byte(str))
 	return res
 }
 
 // Respond with User Agent header value echoed in body to GET /user-agent
-func handleUserAgent(req *request) *response {
-	res := newResponse()
+func handleUserAgent(req *server.Request) *server.Response {
+	res := server.NewResponse()
 
-	ua, ok := req.headers[headerUserAgent]
+	ua, ok := req.Headers[server.HeaderUserAgent]
 	if !ok {
-		res.setStatus(statusNotFound)
+		res.SetStatus(server.StatusNotFound)
 		return res
 	}
 	usrAg := ua.(string)
 
-	res.setStatus(statusOK)
-	res.setHeader(headerContentType, "text/plain")
-	res.setHeader(headerContentLength, len(usrAg))
-	res.setBody([]byte(usrAg))
+	res.SetStatus(server.StatusOK)
+	res.SetHeader(server.HeaderContentType, "text/plain")
+	res.SetHeader(server.HeaderContentLength, len(usrAg))
+	res.SetBody([]byte(usrAg))
 
 	return res
 }
 
 // Respond with requested file served from directory to GET /files/<filename>
-func (d *ServeDir) handleFileRequest() pathHandler {
-	return func(req *request) *response {
-		res := newResponse()
+func (d *ServeDir) handleFileRequest() server.PathHandler {
+	return func(req *server.Request) *server.Response {
+		res := server.NewResponse()
 
-		filename := req.target[7:]
+		filename := req.Target[7:]
 
 		data, err := os.ReadFile(d.directory + "/" + filename)
 		if err != nil {
 			log.Println("file not found:", d.directory+"/"+filename)
-			res.setStatus(statusNotFound)
+			res.SetStatus(server.StatusNotFound)
 
 			return res
 		}
 
-		res.setStatus(statusOK)
-		res.setHeader(headerContentType, "application/octet-stream")
-		res.setHeader(headerContentLength, len(data))
-		res.setBody(data)
+		res.SetStatus(server.StatusOK)
+		res.SetHeader(server.HeaderContentType, "application/octet-stream")
+		res.SetHeader(server.HeaderContentLength, len(data))
+		res.SetBody(data)
 
 		return res
 	}
 }
 
 // Receive file and save it to directory via POST /files/<filename>
-func (d *ServeDir) handleFilePost() pathHandler {
-	return func(req *request) *response {
-		res := newResponse()
+func (d *ServeDir) handleFilePost() server.PathHandler {
+	return func(req *server.Request) *server.Response {
+		res := server.NewResponse()
 
-		cl, ok := req.headers[headerContentLength]
+		cl, ok := req.Headers[server.HeaderContentLength]
 		if !ok {
 			log.Println("bad request: content-length header not received")
-			res.setStatus(statusLengthRequired)
+			res.SetStatus(server.StatusLengthRequired)
 			return res
 		}
 		cBytes := cl.(int)
@@ -107,34 +109,34 @@ func (d *ServeDir) handleFilePost() pathHandler {
 		// 	return res
 		// }
 
-		filename := req.target[7:]
+		filename := req.Target[7:]
 		path := d.directory + "/" + filename
 
 		_, err := os.Stat(path)
 		if err == nil {
 			log.Println("error: file already exists")
-			res.setStatus(statusForbiden)
+			res.SetStatus(server.StatusForbiden)
 			return res
 		}
 
 		file, err := os.Create(path)
 		if err != nil {
 			log.Println("error creating file:", err)
-			res.setStatus(statusInternalServerError)
+			res.SetStatus(server.StatusInternalServerError)
 			return res
 		}
 		defer file.Close()
 
-		content := req.body[:cBytes]
+		content := req.Body[:cBytes]
 		_, err = io.WriteString(file, content)
 		if err != nil {
 			log.Println("error writing to file:", err)
-			res.setStatus(statusInternalServerError)
+			res.SetStatus(server.StatusInternalServerError)
 			return res
 		}
 
 		log.Println(cBytes, " bytes written to ", path)
-		res.setStatus(statusCreated)
+		res.SetStatus(server.StatusCreated)
 
 		return res
 	}

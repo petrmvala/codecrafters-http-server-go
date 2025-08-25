@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -8,21 +8,21 @@ import (
 )
 
 const (
-	headerAcceptEncoding  = "Accept-Encoding"
-	headerAllow           = "Allow"
-	headerContentEncoding = "Content-Encoding"
-	headerContentType     = "Content-Type"
-	headerContentLength   = "Content-Length"
-	headerUserAgent       = "User-Agent"
+	HeaderAcceptEncoding  = "Accept-Encoding"
+	HeaderAllow           = "Allow"
+	HeaderContentEncoding = "Content-Encoding"
+	HeaderContentType     = "Content-Type"
+	HeaderContentLength   = "Content-Length"
+	HeaderUserAgent       = "User-Agent"
 )
 
 func (h *headers) ToString() string {
 	var b strings.Builder
 	for hdr, val := range *h {
 		var v string
-		if hdr == headerContentLength {
+		if hdr == HeaderContentLength {
 			v = strconv.Itoa(val.(int))
-		} else if hdr == headerAcceptEncoding {
+		} else if hdr == HeaderAcceptEncoding {
 			l := []string{}
 			for e, _ := range val.(map[string]bool) {
 				l = append(l, e)
@@ -48,26 +48,26 @@ func parseHeaders(data []string) headers {
 		}
 
 		switch key {
-		case headerAcceptEncoding: // https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Encoding
+		case HeaderAcceptEncoding: // https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Encoding
 			e := map[string]bool{}
 			for _, enc := range strings.Split(value, ",") {
 				e[strings.TrimSpace(enc)] = true
 			}
 			h[key] = e
-		case headerAllow:
+		case HeaderAllow:
 			h[key] = value
-		case headerContentEncoding:
+		case HeaderContentEncoding:
 			h[key] = value
-		case headerContentType:
+		case HeaderContentType:
 			h[key] = value
-		case headerContentLength:
+		case HeaderContentLength:
 			len, err := strconv.Atoi(value)
 			if err != nil {
 				log.Println("cannot parse header, skipping")
 				continue
 			}
 			h[key] = len
-		case headerUserAgent:
+		case HeaderUserAgent:
 			h[key] = value
 		default:
 			log.Println("invalid header, skipping:", key, value)

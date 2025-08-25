@@ -1,29 +1,29 @@
-package main
+package server
 
 import (
 	"errors"
 	"strings"
 )
 
-type request struct {
-	method  string
-	target  string
-	headers headers
-	body    string
+type Request struct {
+	Method  string
+	Target  string
+	Headers headers
+	Body    string
 }
 
-func parseRequest(r string) (*request, error) {
-	req := &request{
-		headers: headers{},
+func parseRequest(r string) (*Request, error) {
+	req := &Request{
+		Headers: headers{},
 	}
 
 	// If the string cannot be split, body is set to ""
 	head, body, _ := strings.Cut(r, "\r\n\r\n")
-	req.body = body
+	req.Body = body
 
 	headlines := strings.Split(head, "\r\n")
 	if len(headlines) > 1 {
-		req.headers = parseHeaders(headlines[1:])
+		req.Headers = parseHeaders(headlines[1:])
 	}
 
 	firstLine := strings.Split(headlines[0], " ")
@@ -31,13 +31,13 @@ func parseRequest(r string) (*request, error) {
 		return nil, errors.New("error parsing head")
 	}
 
-	req.method = firstLine[0]
-	req.target = firstLine[1]
+	req.Method = firstLine[0]
+	req.Target = firstLine[1]
 	version := firstLine[2]
 	if version != version11 {
 		return nil, errors.New("invalid version")
 	}
-	if req.method != methodGet && req.method != methodPost {
+	if req.Method != methodGet && req.Method != methodPost {
 		return nil, errors.New("invalid method")
 	}
 

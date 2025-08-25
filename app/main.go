@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"log"
+
+	"github.com/codecrafters-io/http-server-starter-go/app/server"
 )
 
 type ServeDir struct {
@@ -19,16 +21,16 @@ func main() {
 		directory: *serveDir,
 	}
 
-	s := NewServer("4221")
+	s := server.NewServer("4221")
 
-	d := newDistributor()
-	d.get("/", handleRootResponse)
-	d.get("/user-agent", handleUserAgent)
-	d.get("/echo/", handleEchoResponse)
-	d.get("/files/", dir.handleFileRequest())
-	d.post("/files/", dir.handleFilePost())
+	d := server.NewDistributor()
+	d.Get("/", handleRootResponse)
+	d.Get("/user-agent", handleUserAgent)
+	d.Get("/echo/", handleEchoResponse)
+	d.Get("/files/", dir.handleFileRequest())
+	d.Post("/files/", dir.handleFilePost())
 
-	s.distributor = *d
+	s.Distributor = *d
 
 	if err := s.Run(); err != nil {
 		log.Fatal(err)
