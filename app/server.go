@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+	"errors"
 	"log"
 	"net"
 	"strings"
@@ -13,6 +13,47 @@ const (
 	methodGet  = "GET"
 	methodPost = "POST"
 )
+
+type Server struct {
+	maxFilesizeBytes int
+	port             string
+	serveDir         string
+	version          string
+	distributor      distributor
+}
+
+func NewServer(port string) *Server {
+	return &Server{
+		maxFilesizeBytes: 1000000, // 1 MB
+		port:             port,
+		serveDir:         "/tmp/data/codecrafters.io/http-server-tester/",
+		version:          "HTTP/1.1",
+		distributor:      distributor{},
+	}
+}
+
+func (s *Server) Run() error {
+	l, err := net.Listen("tcp", "0.0.0.0:"+s.port)
+	if err != nil {
+		return errors.New("failed to bind to port")
+	}
+	log.Println("started serving on port", s.port)
+
+	s.acceptLoop(l)
+
+	return nil
+}
+
+func (s *Server) acceptLoop(l net.Listener) {
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			log.Println("error accepting connection: ", err.Error())
+			continue
+		}
+		go s.distributor.handle(conn)
+	}
+}
 
 type pathHandler func(*request) *response
 
@@ -109,46 +150,4 @@ func (d *distributor) handle(conn net.Conn) {
 		return
 	}
 	log.Printf("connection closed [%s]", res.status)
-}
-
-var Config config
-
-type config struct {
-	serveDir         string
-	maxFileSizeBytes int
-}
-
-func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	serveDir := flag.String("directory", "/tmp/data/codecrafters.io/http-server-tester/", "Directory to serve files from")
-	maxFileSizeBytes := flag.Int("max-file-size", 1000000, "Max accepted file size in Bytes [1MB]")
-	flag.Parse()
-
-	Config = config{
-		serveDir:         *serveDir,
-		maxFileSizeBytes: *maxFileSizeBytes,
-	}
-
-	l, err := net.Listen("tcp", "0.0.0.0:4221")
-	if err != nil {
-		log.Fatalln("failed to bind to port 4221")
-	}
-	log.Println("started serving on port 4221")
-
-	d := newDistributor()
-	d.get("/", handleRootResponse)
-	d.get("/user-agent", handleUserAgent)
-	d.get("/echo/", handleEchoResponse)
-	d.get("/files/", handleFileRequest)
-	d.post("/files/", handleFilePost)
-
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			log.Println("error accepting connection: ", err.Error())
-			continue
-		}
-		go d.handle(conn)
-	}
 }

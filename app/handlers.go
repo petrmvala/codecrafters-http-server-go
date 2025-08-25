@@ -65,73 +65,77 @@ func handleUserAgent(req *request) *response {
 }
 
 // Respond with requested file served from directory to GET /files/<filename>
-func handleFileRequest(req *request) *response {
-	res := newResponse()
+func (d *ServeDir) handleFileRequest() pathHandler {
+	return func(req *request) *response {
+		res := newResponse()
 
-	filename := req.target[7:]
+		filename := req.target[7:]
 
-	data, err := os.ReadFile(Config.serveDir + "/" + filename)
-	if err != nil {
-		log.Println("file not found:", Config.serveDir+"/"+filename)
-		res.setStatus(statusNotFound)
+		data, err := os.ReadFile(d.directory + "/" + filename)
+		if err != nil {
+			log.Println("file not found:", d.directory+"/"+filename)
+			res.setStatus(statusNotFound)
+
+			return res
+		}
+
+		res.setStatus(statusOK)
+		res.setHeader(headerContentType, "application/octet-stream")
+		res.setHeader(headerContentLength, len(data))
+		res.setBody(data)
 
 		return res
 	}
-
-	res.setStatus(statusOK)
-	res.setHeader(headerContentType, "application/octet-stream")
-	res.setHeader(headerContentLength, len(data))
-	res.setBody(data)
-
-	return res
 }
 
 // Receive file and save it to directory via POST /files/<filename>
-func handleFilePost(req *request) *response {
-	res := newResponse()
+func (d *ServeDir) handleFilePost() pathHandler {
+	return func(req *request) *response {
+		res := newResponse()
 
-	cl, ok := req.headers[headerContentLength]
-	if !ok {
-		log.Println("bad request: content-length header not received")
-		res.setStatus(statusLengthRequired)
+		cl, ok := req.headers[headerContentLength]
+		if !ok {
+			log.Println("bad request: content-length header not received")
+			res.setStatus(statusLengthRequired)
+			return res
+		}
+		cBytes := cl.(int)
+
+		// if cBytes > Config.maxFileSizeBytes {
+		// 	log.Println("error: content too large")
+		// 	res.setStatus(statusContentTooLarge)
+		// 	return res
+		// }
+
+		filename := req.target[7:]
+		path := d.directory + "/" + filename
+
+		_, err := os.Stat(path)
+		if err == nil {
+			log.Println("error: file already exists")
+			res.setStatus(statusForbiden)
+			return res
+		}
+
+		file, err := os.Create(path)
+		if err != nil {
+			log.Println("error creating file:", err)
+			res.setStatus(statusInternalServerError)
+			return res
+		}
+		defer file.Close()
+
+		content := req.body[:cBytes]
+		_, err = io.WriteString(file, content)
+		if err != nil {
+			log.Println("error writing to file:", err)
+			res.setStatus(statusInternalServerError)
+			return res
+		}
+
+		log.Println(cBytes, " bytes written to ", path)
+		res.setStatus(statusCreated)
+
 		return res
 	}
-	cBytes := cl.(int)
-
-	if cBytes > Config.maxFileSizeBytes {
-		log.Println("error: content too large")
-		res.setStatus(statusContentTooLarge)
-		return res
-	}
-
-	filename := req.target[7:]
-	path := Config.serveDir + "/" + filename
-
-	_, err := os.Stat(path)
-	if err == nil {
-		log.Println("error: file already exists")
-		res.setStatus(statusForbiden)
-		return res
-	}
-
-	file, err := os.Create(path)
-	if err != nil {
-		log.Println("error creating file:", err)
-		res.setStatus(statusInternalServerError)
-		return res
-	}
-	defer file.Close()
-
-	content := req.body[:cBytes]
-	_, err = io.WriteString(file, content)
-	if err != nil {
-		log.Println("error writing to file:", err)
-		res.setStatus(statusInternalServerError)
-		return res
-	}
-
-	log.Println(cBytes, " bytes written to ", path)
-	res.setStatus(statusCreated)
-
-	return res
 }
