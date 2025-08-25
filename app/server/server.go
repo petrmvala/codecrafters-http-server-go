@@ -14,30 +14,33 @@ const (
 	methodPost = "POST"
 )
 
+type PathHandler func(*Request) *Response
+
 type Server struct {
-	maxFilesizeBytes int
-	port             string
-	serveDir         string
-	version          string
-	Distributor      distributor
+	// Maximum content size of the request in bytes
+	maxContentSize int
+	address        string
+	version        string
+	pathGet        map[string]PathHandler
+	pathPost       map[string]PathHandler
 }
 
-func NewServer(port string) *Server {
+func NewServer(address string) *Server {
 	return &Server{
-		maxFilesizeBytes: 1000000, // 1 MB
-		port:             port,
-		serveDir:         "/tmp/data/codecrafters.io/http-server-tester/",
-		version:          "HTTP/1.1",
-		Distributor:      distributor{},
+		maxContentSize: 1024, // 1 KiB
+		address:        address,
+		version:        "HTTP/1.1",
+		pathGet:        map[string]PathHandler{},
+		pathPost:       map[string]PathHandler{},
 	}
 }
 
 func (s *Server) Run() error {
-	l, err := net.Listen("tcp", "0.0.0.0:"+s.port)
+	l, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return errors.New("failed to bind to port")
 	}
-	log.Println("started serving on port", s.port)
+	log.Println("started serving on ", s.address)
 
 	s.acceptLoop(l)
 
@@ -51,41 +54,27 @@ func (s *Server) acceptLoop(l net.Listener) {
 			log.Println("error accepting connection: ", err.Error())
 			continue
 		}
-		go s.Distributor.handle(conn)
+		go s.handle(conn)
 	}
 }
 
-type PathHandler func(*Request) *Response
-
-type distributor struct {
-	pathGet  map[string]PathHandler
-	pathPost map[string]PathHandler
-}
-
-func NewDistributor() *distributor {
-	return &distributor{
-		pathGet:  map[string]PathHandler{},
-		pathPost: map[string]PathHandler{},
-	}
-}
-
-func (d *distributor) Get(path string, handler PathHandler) {
-	if _, ok := d.pathGet[path]; ok {
+func (s *Server) Get(path string, handler PathHandler) {
+	if _, ok := s.pathGet[path]; ok {
 		log.Fatalln("invalid configuration: path already exists")
 	}
-	d.pathGet[path] = handler
+	s.pathGet[path] = handler
 	log.Println("path registered: GET", path)
 }
 
-func (d *distributor) Post(path string, handler PathHandler) {
-	if _, ok := d.pathPost[path]; ok {
+func (s *Server) Post(path string, handler PathHandler) {
+	if _, ok := s.pathPost[path]; ok {
 		log.Fatalln("invalid configuration: path already exists")
 	}
-	d.pathPost[path] = handler
+	s.pathPost[path] = handler
 	log.Println("path registered: POST", path)
 }
 
-func (d *distributor) handle(conn net.Conn) {
+func (s *Server) handle(conn net.Conn) {
 	buffer := make([]byte, 1024)
 
 	defer conn.Close()
@@ -119,8 +108,8 @@ func (d *distributor) handle(conn net.Conn) {
 	}
 	// now is pathBase == / or /echo -> exact match, OR /echo/ -> prefix match (which is also exact match)
 
-	getHandler, gok := d.pathGet[pathBase]
-	postHandler, pok := d.pathPost[pathBase]
+	getHandler, gok := s.pathGet[pathBase]
+	postHandler, pok := s.pathPost[pathBase]
 
 	if !gok && !pok {
 		res.SetStatus(StatusNotFound)

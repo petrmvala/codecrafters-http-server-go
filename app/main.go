@@ -21,16 +21,13 @@ func main() {
 		directory: *serveDir,
 	}
 
-	s := server.NewServer("4221")
+	s := server.NewServer("0.0.0.0:4221")
 
-	d := server.NewDistributor()
-	d.Get("/", handleRootResponse)
-	d.Get("/user-agent", handleUserAgent)
-	d.Get("/echo/", handleEchoResponse)
-	d.Get("/files/", dir.handleFileRequest())
-	d.Post("/files/", dir.handleFilePost())
-
-	s.Distributor = *d
+	s.Get("/", handleRootResponse)
+	s.Get("/user-agent", handleUserAgent)
+	s.Get("/echo/", handleEchoResponse)
+	s.Get("/files/", dir.handleFileRequest())
+	s.Post("/files/", dir.handleFilePost())
 
 	if err := s.Run(); err != nil {
 		log.Fatal(err)
