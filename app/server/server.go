@@ -41,7 +41,7 @@ func (s *Server) Run() error {
 	if err != nil {
 		return errors.New("failed to bind to port")
 	}
-	log.Println("started serving on ", s.address)
+	log.Println("started serving on", s.address)
 
 	s.acceptLoop(l)
 
@@ -52,9 +52,10 @@ func (s *Server) acceptLoop(l net.Listener) {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Println("error accepting connection: ", err.Error())
+			log.Println("error accepting connection:", err.Error())
 			continue
 		}
+		log.Println("accepted connection:", conn.RemoteAddr().String())
 		go s.handle(conn)
 	}
 }
@@ -81,18 +82,16 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	_, err := conn.Read(buffer)
 	if err != nil {
-		log.Println("closing connection:", err.Error())
+		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
 		return
 	}
 
 	// perhaps I should pass the bytes
 	req, err := parseRequest(string(buffer))
 	if err != nil {
-		log.Println("closing connection:", err.Error())
+		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
 		return
 	}
-	//TODO: I am not validating method nor target here, I should just accept from IP, this is misguiding
-	log.Println("accepted connection:", req.Method, req.Target)
 
 	//TODO: I don't like this
 	res := Response{
@@ -136,8 +135,8 @@ func (s *Server) handle(conn net.Conn) {
 
 	_, err = conn.Write(res.Bytes())
 	if err != nil {
-		log.Println("closing connection:", err.Error())
+		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
 		return
 	}
-	log.Printf("connection closed [%s]", res.status)
+	log.Printf("connection closed [%s]: %s", res.status, conn.RemoteAddr().String())
 }
