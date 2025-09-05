@@ -1,11 +1,10 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/codecrafters-io/http-server-starter-go/app/server"
 )
@@ -24,25 +23,7 @@ func handleEchoResponse(req *server.Request) *server.Response {
 
 	res.SetStatus(server.StatusOK)
 	res.SetHeader(server.HeaderContentType, "text/plain")
-
-	if enc, ok := req.Headers[server.HeaderAcceptEncoding]; ok {
-		if _, ok := enc.(map[string]bool)["gzip"]; ok {
-			var buf bytes.Buffer
-			w := gzip.NewWriter(&buf)
-			_, err := w.Write([]byte(str))
-			if err != nil {
-				log.Println("aborting compression:", err.Error())
-			}
-			if err := w.Close(); err != nil {
-				log.Println("aborting compression:", err.Error())
-			}
-			res.SetHeader(server.HeaderContentLength, buf.Len())
-			res.SetHeader(server.HeaderContentEncoding, "gzip")
-			res.SetBody(buf.Bytes())
-			return res
-		}
-	}
-	res.SetHeader(server.HeaderContentLength, len(str))
+	res.SetHeader(server.HeaderContentLength, strconv.Itoa(len(str)))
 	res.SetBody([]byte(str))
 	return res
 }
@@ -56,11 +37,11 @@ func handleUserAgent(req *server.Request) *server.Response {
 		res.SetStatus(server.StatusNotFound)
 		return res
 	}
-	usrAg := ua.(string)
+	usrAg := ua[0]
 
 	res.SetStatus(server.StatusOK)
 	res.SetHeader(server.HeaderContentType, "text/plain")
-	res.SetHeader(server.HeaderContentLength, len(usrAg))
+	res.SetHeader(server.HeaderContentLength, strconv.Itoa(len(usrAg)))
 	res.SetBody([]byte(usrAg))
 
 	return res
@@ -83,7 +64,7 @@ func (d *ServeDir) handleFileRequest() server.PathHandler {
 
 		res.SetStatus(server.StatusOK)
 		res.SetHeader(server.HeaderContentType, "application/octet-stream")
-		res.SetHeader(server.HeaderContentLength, len(data))
+		res.SetHeader(server.HeaderContentLength, strconv.Itoa(len(data)))
 		res.SetBody(data)
 
 		return res
@@ -101,7 +82,10 @@ func (d *ServeDir) handleFilePost() server.PathHandler {
 			res.SetStatus(server.StatusLengthRequired)
 			return res
 		}
-		cBytes := cl.(int)
+		cBytes, err := strconv.Atoi(cl[0])
+		if err != nil {
+			log.Println("conversion error:", cl[0])
+		}
 
 		// if cBytes > Config.maxFileSizeBytes {
 		// 	log.Println("error: content too large")
@@ -112,7 +96,7 @@ func (d *ServeDir) handleFilePost() server.PathHandler {
 		filename := req.Target[7:]
 		path := d.directory + "/" + filename
 
-		_, err := os.Stat(path)
+		_, err = os.Stat(path)
 		if err == nil {
 			log.Println("error: file already exists")
 			res.SetStatus(server.StatusForbiden)

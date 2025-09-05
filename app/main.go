@@ -1,14 +1,51 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"log"
+	"strconv"
 
 	"github.com/codecrafters-io/http-server-starter-go/app/server"
 )
 
 type ServeDir struct {
 	directory string
+}
+
+func WithGzip(req *server.Request) *server.Response {
+	res := handleEchoResponse(req)
+
+	gzipHdr := false
+	if enc, ok := req.Headers[server.HeaderAcceptEncoding]; ok {
+		for _, e := range enc {
+			if e == "gzip" {
+				gzipHdr = true
+				break
+			}
+		}
+	}
+	if !gzipHdr {
+		return res
+	}
+
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	_, err := w.Write(res.Body)
+	if err != nil {
+		log.Println("failed to compress:", err.Error())
+		return res
+	}
+	if err := w.Close(); err != nil {
+		log.Println("failed to close:", err.Error())
+		return res
+	}
+
+	res.SetHeader(server.HeaderContentLength, strconv.Itoa(buf.Len()))
+	res.SetHeader(server.HeaderContentEncoding, "gzip")
+	res.SetBody(buf.Bytes())
+	return res
 }
 
 func main() {
@@ -23,11 +60,11 @@ func main() {
 
 	s := server.NewServer("0.0.0.0:4221")
 
-	s.Get("/", handleRootResponse)
-	s.Get("/user-agent", handleUserAgent)
-	s.Get("/echo/", handleEchoResponse)
-	s.Get("/files/", dir.handleFileRequest())
-	s.Post("/files/", dir.handleFilePost())
+	s.RegisterGet("/", handleRootResponse)
+	s.RegisterGet("/user-agent", handleUserAgent)
+	s.RegisterGet("/echo/", WithGzip)
+	s.RegisterGet("/files/", dir.handleFileRequest())
+	s.RegisterPost("/files/", dir.handleFilePost())
 
 	if err := s.Run(); err != nil {
 		log.Fatal(err)

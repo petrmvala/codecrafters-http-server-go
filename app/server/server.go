@@ -30,8 +30,9 @@ func NewServer(address string) *Server {
 		maxContentSize: 1024, // 1 KiB
 		address:        address,
 		version:        "HTTP/1.1",
-		pathGet:        map[string]PathHandler{},
-		pathPost:       map[string]PathHandler{},
+		// one data structure is enough
+		pathGet:  map[string]PathHandler{},
+		pathPost: map[string]PathHandler{},
 	}
 }
 
@@ -58,7 +59,7 @@ func (s *Server) acceptLoop(l net.Listener) {
 	}
 }
 
-func (s *Server) Get(path string, handler PathHandler) {
+func (s *Server) RegisterGet(path string, handler PathHandler) {
 	if _, ok := s.pathGet[path]; ok {
 		log.Fatalln("invalid configuration: path already exists")
 	}
@@ -66,7 +67,7 @@ func (s *Server) Get(path string, handler PathHandler) {
 	log.Println("path registered: GET", path)
 }
 
-func (s *Server) Post(path string, handler PathHandler) {
+func (s *Server) RegisterPost(path string, handler PathHandler) {
 	if _, ok := s.pathPost[path]; ok {
 		log.Fatalln("invalid configuration: path already exists")
 	}

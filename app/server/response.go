@@ -23,7 +23,7 @@ const (
 type Response struct {
 	status  string
 	headers headers
-	body    []byte
+	Body    []byte
 }
 
 func NewResponse() *Response {
@@ -32,8 +32,16 @@ func NewResponse() *Response {
 	}
 }
 
-func (r *Response) SetHeader(header string, value any) {
-	r.headers[header] = value
+func (r *Response) AddHeader(header string, value string) {
+	val, ok := r.headers[header]
+	if !ok {
+		val = []string{}
+	}
+	r.headers[header] = append(val, value)
+}
+
+func (r *Response) SetHeader(header string, value string) {
+	r.headers[header] = []string{value}
 }
 
 func (r *Response) SetStatus(status string) {
@@ -41,16 +49,12 @@ func (r *Response) SetStatus(status string) {
 }
 
 func (r *Response) SetBody(body []byte) {
-	r.body = body
-}
-
-func (r *Response) ToString() string {
-	return fmt.Sprintf("%s %s %s\r\n%s\r\n%s", version11, r.status, statusText(r.status), r.headers.ToString(), r.body)
+	r.Body = body
 }
 
 func (r *Response) Bytes() []byte {
 	head := fmt.Sprintf("%s %s %s\r\n%s", version11, r.status, statusText(r.status), r.headers.ToString())
-	b := [][]byte{[]byte(head), r.body}
+	b := [][]byte{[]byte(head), r.Body}
 	return bytes.Join(b, []byte("\r\n"))
 }
 
