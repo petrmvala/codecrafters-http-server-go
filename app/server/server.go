@@ -76,21 +76,9 @@ func (s *Server) readLoop(conn net.Conn) {
 	buffer := make([]byte, 1024)
 	defer conn.Close()
 
-	write := func(res *Response, close bool) {
-		if close {
-			res.SetHeader(HeaderConnection, "close")
-		}
-		_, err := conn.Write(res.Bytes())
-		if err != nil {
-			log.Printf("error writing %s: %s", conn.RemoteAddr().String(), err.Error())
-		}
-		if close {
-			conn.Close()
-			log.Printf("connection closed: %s", conn.RemoteAddr().String())
-		}
-	}
-
 	for {
+		done := false
+
 		_, err := conn.Read(buffer)
 		if err != nil {
 			log.Printf("error reading from connection %s: %q", conn.RemoteAddr().String(), err.Error())
@@ -101,8 +89,11 @@ func (s *Server) readLoop(conn net.Conn) {
 		req, err := parseRequest(buffer)
 		if err != nil {
 			log.Println("error parsing request:", conn.RemoteAddr().String(), err.Error())
-			continue
+			conn.Close()
+			return
 		}
+
+		log.Printf("request: %+v", req)
 
 		// The server only supports one level of nesting
 		// If it ends without a slash, path needs to be matched exactly
@@ -116,32 +107,44 @@ func (s *Server) readLoop(conn net.Conn) {
 
 		res := NewResponse()
 
-		closeAfter := false
-		cls, ok := req.Headers[HeaderConnection]
-		if ok && cls[0] == "close" {
-			closeAfter = true
-		}
-
 		methods, ok := s.paths[pathBase]
 		if !ok {
 			res.SetStatus(StatusNotFound)
-			write(res, closeAfter)
-			continue
+			done = true
 		}
 
 		handler, ok := methods[req.Method]
-		if !ok {
+		if !done && !ok {
 			// It is mandatory to set Allow header
 			// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
 			res.SetStatus(StatusMethodNotAllowed)
 			for m, _ := range methods {
 				res.AddHeader(HeaderAllow, m)
 			}
-			write(res, closeAfter)
-			continue
+			done = true
 		}
 
-		res = handler(req)
-		write(res, closeAfter)
+		if !done {
+			res = handler(req)
+		}
+
+		closeAfter := false
+		cls, ok := req.Headers[HeaderConnection]
+		if ok && cls[0] == "close" {
+			closeAfter = true
+			res.SetHeader(HeaderConnection, "close")
+		}
+
+		log.Printf("writing response: %+v", res)
+		_, err = conn.Write(res.Bytes())
+		if err != nil {
+			log.Printf("error writing %s: %s", conn.RemoteAddr().String(), err.Error())
+		}
+
+		if closeAfter {
+			conn.Close()
+			log.Printf("connection closed: %s", conn.RemoteAddr().String())
+			return
+		}
 	}
 }
