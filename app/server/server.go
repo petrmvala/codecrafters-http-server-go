@@ -76,10 +76,17 @@ func (s *Server) readLoop(conn net.Conn) {
 	buffer := make([]byte, 1024)
 	defer conn.Close()
 
-	write := func(res *Response) {
+	write := func(res *Response, close bool) {
+		if close {
+			res.SetHeader(HeaderConnection, "close")
+		}
 		_, err := conn.Write(res.Bytes())
 		if err != nil {
 			log.Printf("error writing %s: %s", conn.RemoteAddr().String(), err.Error())
+		}
+		if close {
+			conn.Close()
+			log.Printf("connection closed: %s", conn.RemoteAddr().String())
 		}
 	}
 
@@ -97,11 +104,6 @@ func (s *Server) readLoop(conn net.Conn) {
 			continue
 		}
 
-		cls, ok := req.Headers[HeaderConnection]
-		if ok && cls[0] == "close" {
-			break
-		}
-
 		// The server only supports one level of nesting
 		// If it ends without a slash, path needs to be matched exactly
 		// If it ends with a slash, path can extend past slash
@@ -114,10 +116,16 @@ func (s *Server) readLoop(conn net.Conn) {
 
 		res := NewResponse()
 
+		closeAfter := false
+		cls, ok := req.Headers[HeaderConnection]
+		if ok && cls[0] == "close" {
+			closeAfter = true
+		}
+
 		methods, ok := s.paths[pathBase]
 		if !ok {
 			res.SetStatus(StatusNotFound)
-			write(res)
+			write(res, closeAfter)
 			continue
 		}
 
@@ -129,13 +137,11 @@ func (s *Server) readLoop(conn net.Conn) {
 			for m, _ := range methods {
 				res.AddHeader(HeaderAllow, m)
 			}
-			write(res)
+			write(res, closeAfter)
 			continue
 		}
 
 		res = handler(req)
-		write(res)
+		write(res, closeAfter)
 	}
-	conn.Close()
-	log.Printf("connection closed: %s", conn.RemoteAddr().String())
 }
