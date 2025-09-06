@@ -50,7 +50,7 @@ func (s *Server) acceptLoop(l net.Listener) {
 			continue
 		}
 		log.Println("accepted connection:", conn.RemoteAddr().String())
-		go s.handle(conn)
+		go s.readLoop(conn)
 	}
 }
 
@@ -72,64 +72,66 @@ func (s *Server) Register(path string, method string, handler PathHandler) {
 	log.Fatalln("path and method already exists:", method, path)
 }
 
-func (s *Server) handle(conn net.Conn) {
+func (s *Server) readLoop(conn net.Conn) {
 	buffer := make([]byte, 1024)
-
 	defer conn.Close()
-	_, err := conn.Read(buffer)
-	if err != nil {
-		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
-		return
+
+	write := func(res *Response) {
+		_, err := conn.Write(res.Bytes())
+		if err != nil {
+			log.Printf("error writing %s: %s", conn.RemoteAddr().String(), err.Error())
+		}
 	}
 
-	writeAndClose := func(res Response) {
-		_, err = conn.Write(res.Bytes())
+	for {
+		_, err := conn.Read(buffer)
 		if err != nil {
-			log.Println("error closing connection:", conn.RemoteAddr().String(), err.Error())
+			log.Printf("error reading from connection %s: %q", conn.RemoteAddr().String(), err.Error())
+			conn.Close()
 			return
 		}
-		conn.Close()
-		log.Printf("connection closed [%s]: %s", res.status, conn.RemoteAddr().String())
-	}
 
-	req, err := parseRequest(buffer)
-	if err != nil {
-		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
-		return
-	}
-
-	//TODO: I don't like this
-	res := Response{
-		headers: headers{},
-	}
-
-	// The server only supports one level of nesting
-	// If it ends without a slash, path needs to be matched exactly
-	// If it ends with a slash, path can extend past slash
-	pathBase := req.Target
-	sl := strings.Index(req.Target[1:], "/")
-	if sl != -1 {
-		pathBase = req.Target[:sl+2]
-	}
-	// now is pathBase == / or /echo -> exact match, OR /echo/ -> prefix match (which is also exact match)
-
-	methods, ok := s.paths[pathBase]
-	if !ok {
-		res.SetStatus(StatusNotFound)
-		writeAndClose(res)
-	}
-
-	handler, ok := methods[req.Method]
-	if !ok {
-		// It is mandatory to set Allow header
-		// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
-		res.SetStatus(StatusMethodNotAllowed)
-		for m, _ := range methods {
-			res.AddHeader(HeaderAllow, m)
+		req, err := parseRequest(buffer)
+		if err != nil {
+			log.Println("error parsing request:", conn.RemoteAddr().String(), err.Error())
+			continue
 		}
-		writeAndClose(res)
-	}
 
-	res = *handler(req)
-	writeAndClose(res)
+		// The server only supports one level of nesting
+		// If it ends without a slash, path needs to be matched exactly
+		// If it ends with a slash, path can extend past slash
+		pathBase := req.Target
+		sl := strings.Index(req.Target[1:], "/")
+		if sl != -1 {
+			pathBase = req.Target[:sl+2]
+		}
+		// now is pathBase == / or /echo -> exact match, OR /echo/ -> prefix match (which is also exact match)
+
+		res := NewResponse()
+
+		methods, ok := s.paths[pathBase]
+		if !ok {
+			res.SetStatus(StatusNotFound)
+			write(res)
+			continue
+		}
+
+		handler, ok := methods[req.Method]
+		if !ok {
+			// It is mandatory to set Allow header
+			// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
+			res.SetStatus(StatusMethodNotAllowed)
+			for m, _ := range methods {
+				res.AddHeader(HeaderAllow, m)
+			}
+			write(res)
+			continue
+		}
+
+		res = handler(req)
+		write(res)
+		break
+	}
+	conn.Close()
+	log.Printf("connection closed: %s", conn.RemoteAddr().String())
 }
