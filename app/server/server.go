@@ -97,6 +97,11 @@ func (s *Server) readLoop(conn net.Conn) {
 			continue
 		}
 
+		cls, ok := req.Headers[HeaderConnection]
+		if ok && cls[0] == "close" {
+			break
+		}
+
 		// The server only supports one level of nesting
 		// If it ends without a slash, path needs to be matched exactly
 		// If it ends with a slash, path can extend past slash
@@ -130,7 +135,6 @@ func (s *Server) readLoop(conn net.Conn) {
 
 		res = handler(req)
 		write(res)
-		break
 	}
 	conn.Close()
 	log.Printf("connection closed: %s", conn.RemoteAddr().String())

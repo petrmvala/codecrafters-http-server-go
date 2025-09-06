@@ -9,6 +9,7 @@ import (
 const (
 	HeaderAcceptEncoding  = "Accept-Encoding"
 	HeaderAllow           = "Allow"
+	HeaderConnection      = "Connection"
 	HeaderContentEncoding = "Content-Encoding"
 	HeaderContentType     = "Content-Type"
 	HeaderContentLength   = "Content-Length"
