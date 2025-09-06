@@ -12,7 +12,8 @@ type Request struct {
 	Body    string
 }
 
-func parseRequest(r string) (*Request, error) {
+func parseRequest(b []byte) (*Request, error) {
+	r := string(b)
 	req := &Request{
 		Headers: headers{},
 	}
@@ -36,9 +37,6 @@ func parseRequest(r string) (*Request, error) {
 	version := firstLine[2]
 	if version != version11 {
 		return nil, errors.New("invalid version")
-	}
-	if req.Method != methodGet && req.Method != methodPost {
-		return nil, errors.New("invalid method")
 	}
 
 	return req, nil

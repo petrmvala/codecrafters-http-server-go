@@ -9,9 +9,6 @@ import (
 
 const (
 	version11 = "HTTP/1.1"
-
-	methodGet  = "GET"
-	methodPost = "POST"
 )
 
 type PathHandler func(*Request) *Response
@@ -21,8 +18,7 @@ type Server struct {
 	maxContentSize int
 	address        string
 	version        string
-	pathGet        map[string]PathHandler
-	pathPost       map[string]PathHandler
+	paths          map[string]map[string]PathHandler
 }
 
 func NewServer(address string) *Server {
@@ -30,9 +26,7 @@ func NewServer(address string) *Server {
 		maxContentSize: 1024, // 1 KiB
 		address:        address,
 		version:        "HTTP/1.1",
-		// one data structure is enough
-		pathGet:  map[string]PathHandler{},
-		pathPost: map[string]PathHandler{},
+		paths:          map[string]map[string]PathHandler{},
 	}
 }
 
@@ -60,20 +54,22 @@ func (s *Server) acceptLoop(l net.Listener) {
 	}
 }
 
-func (s *Server) RegisterGet(path string, handler PathHandler) {
-	if _, ok := s.pathGet[path]; ok {
-		log.Fatalln("invalid configuration: path already exists")
+func (s *Server) Register(path string, method string, handler PathHandler) {
+	m, ok := s.paths[path]
+	if !ok {
+		s.paths[path] = map[string]PathHandler{method: handler}
+		log.Println("path registered:", method, path)
+		return
 	}
-	s.pathGet[path] = handler
-	log.Println("path registered: GET", path)
-}
 
-func (s *Server) RegisterPost(path string, handler PathHandler) {
-	if _, ok := s.pathPost[path]; ok {
-		log.Fatalln("invalid configuration: path already exists")
+	if _, ok := m[method]; !ok {
+		m[method] = handler
+		s.paths[path] = m
+		log.Println("path registered:", method, path)
+		return
 	}
-	s.pathPost[path] = handler
-	log.Println("path registered: POST", path)
+
+	log.Fatalln("path and method already exists:", method, path)
 }
 
 func (s *Server) handle(conn net.Conn) {
@@ -86,8 +82,17 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	// perhaps I should pass the bytes
-	req, err := parseRequest(string(buffer))
+	writeAndClose := func(res Response) {
+		_, err = conn.Write(res.Bytes())
+		if err != nil {
+			log.Println("error closing connection:", conn.RemoteAddr().String(), err.Error())
+			return
+		}
+		conn.Close()
+		log.Printf("connection closed [%s]: %s", res.status, conn.RemoteAddr().String())
+	}
+
+	req, err := parseRequest(buffer)
 	if err != nil {
 		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
 		return
@@ -108,35 +113,23 @@ func (s *Server) handle(conn net.Conn) {
 	}
 	// now is pathBase == / or /echo -> exact match, OR /echo/ -> prefix match (which is also exact match)
 
-	getHandler, gok := s.pathGet[pathBase]
-	postHandler, pok := s.pathPost[pathBase]
-
-	if !gok && !pok {
+	methods, ok := s.paths[pathBase]
+	if !ok {
 		res.SetStatus(StatusNotFound)
-	} else if (gok && req.Method != methodGet && !pok) || (!gok && pok && req.Method != methodPost) || (gok && req.Method != methodGet && pok && req.Method != methodPost) {
+		writeAndClose(res)
+	}
+
+	handler, ok := methods[req.Method]
+	if !ok {
 		// It is mandatory to set Allow header
 		// https://www.rfc-editor.org/rfc/rfc9110#name-405-method-not-allowed
 		res.SetStatus(StatusMethodNotAllowed)
-		allowedMethods := []string{}
-		if gok {
-			allowedMethods = append(allowedMethods, methodGet)
+		for m, _ := range methods {
+			res.AddHeader(HeaderAllow, m)
 		}
-		if pok {
-			allowedMethods = append(allowedMethods, methodPost)
-		}
-		res.SetHeader(HeaderAllow, strings.Join(allowedMethods, ", "))
-	} else if gok && req.Method == methodGet {
-		res = *getHandler(req)
-	} else if pok && req.Method == methodPost {
-		res = *postHandler(req)
-	} else {
-		log.Fatalln("server programming error")
+		writeAndClose(res)
 	}
 
-	_, err = conn.Write(res.Bytes())
-	if err != nil {
-		log.Println("closing connection:", conn.RemoteAddr().String(), err.Error())
-		return
-	}
-	log.Printf("connection closed [%s]: %s", res.status, conn.RemoteAddr().String())
+	res = *handler(req)
+	writeAndClose(res)
 }

@@ -60,11 +60,11 @@ func main() {
 
 	s := server.NewServer("0.0.0.0:4221")
 
-	s.RegisterGet("/", handleRootResponse)
-	s.RegisterGet("/user-agent", handleUserAgent)
-	s.RegisterGet("/echo/", WithGzip)
-	s.RegisterGet("/files/", dir.handleFileRequest())
-	s.RegisterPost("/files/", dir.handleFilePost())
+	s.Register("/", "GET", handleRootResponse)
+	s.Register("/user-agent", "GET", handleUserAgent)
+	s.Register("/echo/", "GET", WithGzip)
+	s.Register("/files/", "GET", dir.handleFileRequest())
+	s.Register("/files/", "POST", dir.handleFilePost())
 
 	if err := s.Run(); err != nil {
 		log.Fatal(err)
